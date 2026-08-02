@@ -1,0 +1,8 @@
+python-telegram-bot
+supabase
+python-dotenv
+Pillow
+requests
+python-Levenshtein
+flask
+flask-cors

@@ -1,0 +1,60 @@
+# ============================================================
+# BOT DE TELEGRAM - .gitignore
+# Estos archivos NO se suben a GitHub
+# ============================================================
+
+# --- ENTORNO ---
+.env
+.env.local
+.env.*.local
+.env.production
+
+# --- DATOS LOCALES ---
+data/respaldos.json
+data/temp_images/
+*.log
+logs/
+
+# --- PYTHON ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- EDITORES ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- RENDER ---
+render.yaml.local
+
+# --- BASE DE DATOS LOCAL ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- ARCHIVOS TEMPORALES ---
+*.tmp
+*.temp
+*.bak
+*.backup

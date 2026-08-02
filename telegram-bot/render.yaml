@@ -1,0 +1,53 @@
+# ============================================================
+# BOT DE TELEGRAM - CONFIGURACIÓN PARA RENDER
+# Despliegue automático desde GitHub
+# Repositorio: https://github.com/botdavi1001/quizz_bot.git
+# ============================================================
+
+services:
+  - type: web
+    name: quizz-bot-telegram
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m src.main
+    plan: free
+    autoDeploy: true
+    repo: https://github.com/botdavi1001/quizz_bot
+    branch: main
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+        description: "Token del bot de Telegram (de @BotFather)"
+      - key: SUPABASE_URL
+        sync: false
+        description: "URL de tu proyecto en Supabase"
+      - key: SUPABASE_KEY
+        sync: false
+        description: "Service Role Key de Supabase (NO la anónima)"
+      - key: SUPABASE_STORAGE_URL
+        sync: false
+        description: "URL de Storage de Supabase (opcional)"
+      - key: ADMIN_PASSWORD
+        sync: false
+        description: "Contraseña para registrarse como admin (/admin* CONTRASEÑA)"
+      - key: TIEMPO_GLOBAL_DEFAULT
+        value: "30"
+        description: "Tiempo global por defecto en segundos"
+      - key: NOTIFICAR_ADMIN
+        value: "True"
+        description: "Notificar al admin cuando alguien termina"
+      - key: REINTENTOS_DEFAULT
+        value: "3"
+        description: "Reintentos permitidos por defecto"
+      - key: TOLERANCIA_ABIERTAS
+        value: "80"
+        description: "Tolerancia para respuestas abiertas (0-100)"
+      - key: IMG_COMPRESS_KB
+        value: "200"
+        description: "Tamaño máximo de imágenes en KB"
+      - key: BACKUP_FILE
+        value: "data/respaldos.json"
+        description: "Archivo para respaldos locales"
+      - key: PORT
+        value: "10000"
+        description: "Puerto para el servidor web"

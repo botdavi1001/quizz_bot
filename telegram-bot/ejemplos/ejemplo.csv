@@ -1,0 +1,11 @@
+pregunta,tipo,opciones,correctas,tiempo,imagen_url,video_url,enlace
+¿Cuál es la capital de Cuba?,multiple,La Habana;Santiago de Cuba;Camagüey;Holguín,1,30,https://ejemplo.com/la-habana.jpg,,
+¿El sol es una estrella?,vf,Verdadero;Falso,V,15,,
+¿Qué es la fotosíntesis?,abierta,,,60,,,https://es.wikipedia.org/wiki/Fotos%C3%ADntesis
+¿Cuántos continentes hay?,multiple,5;6;7;8,2,20,,
+¿El agua hierve a 100°C al nivel del mar?,vf,Verdadero;Falso,V,10,,
+¿Quién escribió "Cien años de soledad"?,abierta,,,45,,,
+¿Cuál es el planeta más grande del sistema solar?,multiple,La Tierra;Júpiter;Saturno;Marte,2,25,https://ejemplo.com/jupiter.jpg,,
+¿La luz viaja más rápido que el sonido?,vf,Verdadero;Falso,V,15,,
+¿Qué es la inteligencia artificial?,abierta,,,90,,,https://es.wikipedia.org/wiki/Inteligencia_artificial
+¿En qué año llegó el hombre a la Luna?,multiple,1965;1969;1972;1975,2,20,,
