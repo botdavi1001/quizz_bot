@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from threading import Lock
 
-import config
+from src import config
 from src.utils import log_info, log_error
 from src.database import db
 

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, filters, MessageHandler, CallbackQueryHandler
 
-import config
+from src import config
 from src.database import db
 from src.utils import (
     log_info, log_error,

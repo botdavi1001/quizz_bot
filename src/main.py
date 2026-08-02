@@ -10,7 +10,7 @@ import threading
 from datetime import datetime
 from flask import Flask, request
 
-import config
+from src import config
 from src.bot import configurar_bot
 from src.database import db
 from src.backup_system import backup

@@ -8,7 +8,7 @@ import io
 from typing import List, Dict, Tuple, Optional
 from datetime import datetime
 
-import config
+from src import config
 from src.utils import (
     validar_opciones, 
     validar_tiempo, 

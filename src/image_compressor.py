@@ -13,7 +13,7 @@ from PIL import Image, ImageOps
 import requests
 from telegram import File
 
-import config
+from src import config
 from src.database import db
 from src.utils import log_info, log_error
 

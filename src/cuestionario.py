@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-import config
+from src import config
 from src.database import db
 from src.utils import (
     similitud_semantica, 

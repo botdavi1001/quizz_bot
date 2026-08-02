@@ -5,7 +5,7 @@
 
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
-import config
+from src import config
 from src.database import db
 from src.utils import formatear_fecha, formatear_tiempo, formatear_estado
 

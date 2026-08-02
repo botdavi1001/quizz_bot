@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple
 
 from supabase import create_client, Client
-import config
+from src import config
 
 # ============================================================
 # CONEXIÓN A SUPABASE
