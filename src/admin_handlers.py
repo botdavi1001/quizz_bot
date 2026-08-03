@@ -533,40 +533,53 @@ def registrar_handlers(application):
     async def mostrar_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Muestra el menú de historial para el admin"""
         user_id = update.effective_user.id
-        admin = db.obtener_admin(user_id)
         
-        if not admin:
-            await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
-            return
-        
-        from src.historial_manager import (
-            verificar_limite_historial,
-            verificar_almacenamiento
-        )
-        
-        supera, total, mensaje_limite = verificar_limite_historial()
-        _, porcentaje, mensaje_almacenamiento = verificar_almacenamiento()
-        
-        keyboard = [
-            [InlineKeyboardButton("📈 Resumen general", callback_data="admin_hist_resumido")],
-            [InlineKeyboardButton("📋 Detallado", callback_data="admin_hist_detallado")],
-            [InlineKeyboardButton("👤 Por usuario", callback_data="admin_hist_usuario")],
-            [InlineKeyboardButton("📅 Por fecha", callback_data="admin_hist_fecha")],
-            [InlineKeyboardButton("🏆 Estadísticas", callback_data="admin_hist_estadisticas")],
-            [InlineKeyboardButton("🗑️ Limpiar historial", callback_data="admin_hist_limpiar")],
-            [InlineKeyboardButton("❌ Cerrar", callback_data="admin_hist_cerrar")]
-        ]
-        
-        mensaje = f"📊 **Historial**\n\n"
-        mensaje += f"{mensaje_limite}\n"
-        mensaje += f"{mensaje_almacenamiento}\n\n"
-        mensaje += "Selecciona el tipo de reporte:"
-        
-        await update.message.reply_text(
-            mensaje,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+        try:
+            admin = db.obtener_admin(user_id)
+            
+            if not admin:
+                await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
+                return
+            
+            from src.historial_manager import (
+                verificar_limite_historial,
+                verificar_almacenamiento
+            )
+            
+            supera, total, mensaje_limite = verificar_limite_historial()
+            _, porcentaje, mensaje_almacenamiento = verificar_almacenamiento()
+            
+            keyboard = [
+                [InlineKeyboardButton("📈 Resumen general", callback_data="admin_hist_resumido")],
+                [InlineKeyboardButton("📋 Detallado", callback_data="admin_hist_detallado")],
+                [InlineKeyboardButton("👤 Por usuario", callback_data="admin_hist_usuario")],
+                [InlineKeyboardButton("📅 Por fecha", callback_data="admin_hist_fecha")],
+                [InlineKeyboardButton("🏆 Estadísticas", callback_data="admin_hist_estadisticas")],
+                [InlineKeyboardButton("🗑️ Limpiar historial", callback_data="admin_hist_limpiar")],
+                [InlineKeyboardButton("❌ Cerrar", callback_data="admin_hist_cerrar")]
+            ]
+            
+            mensaje = f"📊 **Historial**\n\n"
+            mensaje += f"{mensaje_limite}\n"
+            mensaje += f"{mensaje_almacenamiento}\n\n"
+            mensaje += "Selecciona el tipo de reporte:"
+            
+            await update.message.reply_text(
+                mensaje,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            log_error(f"Error en mostrar_historial: {str(e)}")
+            import traceback
+            log_error(traceback.format_exc())
+            
+            await update.message.reply_text(
+                f"❌ Error al cargar historial: {str(e)}\n\n"
+                "Revisa los logs de Render para más detalles.",
+                parse_mode='Markdown'
+            )
 
 
     async def manejar_callback_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -576,35 +589,48 @@ def registrar_handlers(application):
         data = query.data
         
         user_id = update.effective_user.id
-        admin = db.obtener_admin(user_id)
         
-        if not admin:
-            await query.edit_message_text("❌ No eres admin.", parse_mode='Markdown')
-            return
-        
-        from src.historial_manager import obtener_historial_para_reporte
-        
-        tipo = data.replace('admin_hist_', '')
-        
-        if tipo == 'cerrar':
-            await query.edit_message_text("✅ Historial cerrado.")
-            from src.bot import mostrar_panel_admin
-            await mostrar_panel_admin(update, context)
-            return
-        
-        if tipo == 'limpiar':
+        try:
+            admin = db.obtener_admin(user_id)
+            
+            if not admin:
+                await query.edit_message_text("❌ No eres admin.", parse_mode='Markdown')
+                return
+            
+            from src.historial_manager import obtener_historial_para_reporte
+            
+            tipo = data.replace('admin_hist_', '')
+            
+            if tipo == 'cerrar':
+                await query.edit_message_text("✅ Historial cerrado.")
+                from src.bot import mostrar_panel_admin
+                await mostrar_panel_admin(update, context)
+                return
+            
+            if tipo == 'limpiar':
+                await query.edit_message_text(
+                    "🗑️ **Limpiar historial**\n\n"
+                    "Escribe el número de días a mantener (ej: 30 para mantener 30 días):\n"
+                    "O escribe 'todo' para eliminar todo.",
+                    parse_mode='Markdown'
+                )
+                admin_estado[user_id] = {'modo': 'limpiar_historial'}
+                return
+            
+            # Generar reporte
+            _, mensaje = obtener_historial_para_reporte(admin['id'], tipo)
+            await query.edit_message_text(mensaje, parse_mode='Markdown')
+            
+        except Exception as e:
+            log_error(f"Error en manejar_callback_historial: {str(e)}")
+            import traceback
+            log_error(traceback.format_exc())
+            
             await query.edit_message_text(
-                "🗑️ **Limpiar historial**\n\n"
-                "Escribe el número de días a mantener (ej: 30 para mantener 30 días):\n"
-                "O escribe 'todo' para eliminar todo.",
+                f"❌ Error al generar reporte: {str(e)}\n\n"
+                "Revisa los logs de Render para más detalles.",
                 parse_mode='Markdown'
             )
-            admin_estado[user_id] = {'modo': 'limpiar_historial'}
-            return
-        
-        _, mensaje = obtener_historial_para_reporte(admin['id'], tipo)
-        await query.edit_message_text(mensaje, parse_mode='Markdown')
-
 
     async def recibir_limpieza_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Recibe la confirmación para limpiar historial"""
