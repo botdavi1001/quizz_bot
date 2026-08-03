@@ -527,24 +527,127 @@ def registrar_handlers(application):
     )
     
     # ============================================================
-    # VER HISTORIAL - SIMPLIFICADO
+    # VER HISTORIAL
     # ============================================================
     
     async def mostrar_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Muestra el historial"""
+        """Muestra el menú de historial para el admin"""
+        user_id = update.effective_user.id
+        admin = db.obtener_admin(user_id)
+        
+        if not admin:
+            await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
+            return
+        
+        from src.historial_manager import (
+            verificar_limite_historial,
+            verificar_almacenamiento
+        )
+        
+        supera, total, mensaje_limite = verificar_limite_historial()
+        _, porcentaje, mensaje_almacenamiento = verificar_almacenamiento()
+        
+        keyboard = [
+            [InlineKeyboardButton("📈 Resumen general", callback_data="admin_hist_resumido")],
+            [InlineKeyboardButton("📋 Detallado", callback_data="admin_hist_detallado")],
+            [InlineKeyboardButton("👤 Por usuario", callback_data="admin_hist_usuario")],
+            [InlineKeyboardButton("📅 Por fecha", callback_data="admin_hist_fecha")],
+            [InlineKeyboardButton("🏆 Estadísticas", callback_data="admin_hist_estadisticas")],
+            [InlineKeyboardButton("🗑️ Limpiar historial", callback_data="admin_hist_limpiar")],
+            [InlineKeyboardButton("❌ Cerrar", callback_data="admin_hist_cerrar")]
+        ]
+        
+        mensaje = f"📊 **Historial**\n\n"
+        mensaje += f"{mensaje_limite}\n"
+        mensaje += f"{mensaje_almacenamiento}\n\n"
+        mensaje += "Selecciona el tipo de reporte:"
+        
         await update.message.reply_text(
-            "📊 **Historial**\n\n"
-            "Esta función está en desarrollo.",
+            mensaje,
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
-    
-    application.add_handler(
-        MessageHandler(
-            filters.Regex(f'^{config.BOTON_ADMIN["historial"]}$'), 
-            mostrar_historial
-        )
-    )
-    
+
+
+    async def manejar_callback_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Maneja los callbacks del historial"""
+        query = update.callback_query
+        await query.answer()
+        data = query.data
+        
+        user_id = update.effective_user.id
+        admin = db.obtener_admin(user_id)
+        
+        if not admin:
+            await query.edit_message_text("❌ No eres admin.", parse_mode='Markdown')
+            return
+        
+        from src.historial_manager import obtener_historial_para_reporte
+        
+        tipo = data.replace('admin_hist_', '')
+        
+        if tipo == 'cerrar':
+            await query.edit_message_text("✅ Historial cerrado.")
+            from src.bot import mostrar_panel_admin
+            await mostrar_panel_admin(update, context)
+            return
+        
+        if tipo == 'limpiar':
+            await query.edit_message_text(
+                "🗑️ **Limpiar historial**\n\n"
+                "Escribe el número de días a mantener (ej: 30 para mantener 30 días):\n"
+                "O escribe 'todo' para eliminar todo.",
+                parse_mode='Markdown'
+            )
+            admin_estado[user_id] = {'modo': 'limpiar_historial'}
+            return
+        
+        _, mensaje = obtener_historial_para_reporte(admin['id'], tipo)
+        await query.edit_message_text(mensaje, parse_mode='Markdown')
+
+
+    async def recibir_limpieza_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Recibe la confirmación para limpiar historial"""
+        texto = update.message.text.strip()
+        user_id = update.effective_user.id
+        estado = admin_estado.get(user_id, {})
+        
+        if estado.get('modo') != 'limpiar_historial':
+            return
+        
+        from src.historial_manager import limpiar_historial_por_dias
+        
+        if texto.lower() == 'todo':
+            eliminados = limpiar_historial_por_dias(30)
+            await update.message.reply_text(
+                f"🗑️ Se eliminaron {eliminados} registros antiguos (más de 30 días).",
+                parse_mode='Markdown'
+            )
+        else:
+            try:
+                dias = int(texto)
+                if dias < 1:
+                    await update.message.reply_text(
+                        "❌ El número de días debe ser mayor a 0.",
+                        parse_mode='Markdown'
+                    )
+                    return
+                eliminados = limpiar_historial_por_dias(dias)
+                await update.message.reply_text(
+                    f"🗑️ Se eliminaron {eliminados} registros con más de {dias} días de antigüedad.",
+                    parse_mode='Markdown'
+                )
+            except ValueError:
+                await update.message.reply_text(
+                    "❌ Escribe un número válido o 'todo'.",
+                    parse_mode='Markdown'
+                )
+                return
+        
+        admin_estado.pop(user_id, None)
+        await mostrar_historial(update, context)
+
+
     # ============================================================
     # CONFIGURACIÓN - SIMPLIFICADO
     # ============================================================
@@ -572,7 +675,6 @@ def registrar_handlers(application):
         """Paso 1: Iniciar lanzamiento del cuestionario"""
         user_id = update.effective_user.id
         
-        # Verificar que haya preguntas
         admin = db.obtener_admin(user_id)
         if not admin:
             await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
@@ -587,7 +689,6 @@ def registrar_handlers(application):
             )
             return ConversationHandler.END
         
-        # Inicializar estado
         admin_estado[user_id] = {
             'admin_id': admin['id'],
             'total_preguntas': total_preguntas
@@ -653,7 +754,6 @@ def registrar_handlers(application):
             user_id = update.effective_user.id
             admin_estado[user_id]['cantidad'] = cantidad
             
-            # Mostrar opciones de selección
             keyboard = [
                 [InlineKeyboardButton("📌 Fijas", callback_data="lanzar_fijas")],
                 [InlineKeyboardButton("🎲 Al azar", callback_data="lanzar_azar")],
@@ -694,7 +794,6 @@ def registrar_handlers(application):
         admin_estado[user_id]['seleccion_tipo'] = data.replace('lanzar_', '')
         
         if data == 'lanzar_fijas':
-            # Mostrar lista de preguntas para seleccionar
             admin = db.obtener_admin(user_id)
             preguntas = db.obtener_preguntas(admin['id'])
             admin_estado[user_id]['preguntas_lista'] = preguntas
@@ -718,7 +817,6 @@ def registrar_handlers(application):
             return ESPERANDO_LANZAR_FIJAS
         
         elif data == 'lanzar_azar':
-            # Selección al azar, pasar al siguiente paso
             admin_estado[user_id]['seleccion_detalle'] = 'azar'
             await query.edit_message_text(
                 "✅ Selección al azar.\n\n"
@@ -729,7 +827,6 @@ def registrar_handlers(application):
             return ESPERANDO_LANZAR_TIEMPO
         
         elif data == 'lanzar_filtro':
-            # Filtrar por tipo
             await query.edit_message_text(
                 "🔍 **Filtrar por tipo**\n\n"
                 "Escribe la cantidad por tipo en este formato:\n"
@@ -750,7 +847,6 @@ def registrar_handlers(application):
         cantidad = estado.get('cantidad', 0)
         
         try:
-            # Parsear selección
             seleccionados = set()
             partes = texto.split(',')
             
@@ -780,12 +876,10 @@ def registrar_handlers(application):
                     f"¿Quieres continuar con {len(seleccionados)} preguntas? (responde 'si' o 'no')",
                     parse_mode='Markdown'
                 )
-                # Guardar selección para confirmación
                 estado['seleccion_temp'] = list(seleccionados)
                 estado['esperando_confirmacion_seleccion'] = True
                 return ESPERANDO_LANZAR_FIJAS
             
-            # Guardar IDs seleccionados
             ids_seleccionados = [preguntas_lista[i]['id'] for i in seleccionados]
             estado['preguntas_ids'] = ids_seleccionados
             estado['seleccion_detalle'] = 'fijas'
@@ -814,7 +908,6 @@ def registrar_handlers(application):
         cantidad = estado.get('cantidad', 0)
         
         try:
-            # Parsear filtro
             filtros = {}
             total_filtro = 0
             partes = texto.split(',')
@@ -847,7 +940,6 @@ def registrar_handlers(application):
                 estado['esperando_confirmacion_filtro'] = True
                 return ESPERANDO_LANZAR_FILTRO
             
-            # Guardar filtro
             estado['filtros'] = filtros
             estado['seleccion_detalle'] = filtros
             
@@ -918,7 +1010,6 @@ def registrar_handlers(application):
             estado = admin_estado[user_id]
             estado['reintentos'] = reintentos
             
-            # Mostrar resumen
             mensaje = "📋 **Resumen del cuestionario**\n\n"
             mensaje += f"📌 Nombre: {estado.get('nombre', 'Sin nombre')}\n"
             mensaje += f"📊 Preguntas: {estado.get('cantidad', 0)}\n"
@@ -969,22 +1060,18 @@ def registrar_handlers(application):
                 await query.edit_message_text("❌ No eres admin.")
                 return ConversationHandler.END
             
-            # Obtener IDs de preguntas seleccionadas
             preguntas_ids = estado.get('preguntas_ids', [])
             seleccion_tipo = estado.get('seleccion_tipo', 'azar')
             
-            # Si no hay IDs seleccionados (caso azar o filtro), seleccionar automáticamente
             if not preguntas_ids:
                 todas_preguntas = db.obtener_preguntas(admin['id'])
                 cantidad = estado.get('cantidad', 0)
                 
                 if seleccion_tipo == 'azar':
-                    # Seleccionar al azar
                     seleccionadas = random.sample(todas_preguntas, min(cantidad, len(todas_preguntas)))
                     preguntas_ids = [p['id'] for p in seleccionadas]
                 
                 elif seleccion_tipo == 'filtro':
-                    # Seleccionar por filtro
                     filtros = estado.get('filtros', {})
                     seleccionadas = []
                     
@@ -994,7 +1081,6 @@ def registrar_handlers(application):
                             elegidas = random.sample(disponibles, min(cantidad_tipo, len(disponibles)))
                             seleccionadas.extend(elegidas)
                     
-                    # Si faltan preguntas, completar con aleatorias
                     if len(seleccionadas) < cantidad:
                         restantes = [p for p in todas_preguntas if p not in seleccionadas]
                         faltantes = cantidad - len(seleccionadas)
@@ -1003,7 +1089,6 @@ def registrar_handlers(application):
                     
                     preguntas_ids = [p['id'] for p in seleccionadas]
             
-            # Guardar en Supabase
             cuestionario_id = db.crear_cuestionario(
                 admin_id=admin['id'],
                 nombre=estado.get('nombre', 'Sin nombre'),
@@ -1026,7 +1111,6 @@ def registrar_handlers(application):
                     parse_mode='Markdown'
                 )
             
-            # Limpiar estado
             admin_estado.pop(user_id, None)
             from src.bot import mostrar_panel_admin
             await mostrar_panel_admin(update, context)

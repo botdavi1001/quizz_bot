@@ -335,21 +335,34 @@ def configurar_bot() -> Application:
         
         data = query.data
         
-        # Delegar según el tipo de callback
+        # Callbacks de admin
         if data.startswith('admin_'):
             from src.admin_handlers import admin_handlers
-            await admin_handlers.manejar_callback_admin(update, context)
+            
+            # Historial
+            if data.startswith('admin_hist_'):
+                await admin_handlers.manejar_callback_historial(update, context)
+            else:
+                await admin_handlers.manejar_callback_admin(update, context)
+        
+        # Callbacks de usuario
         elif data.startswith('user_'):
             from src.user_handlers import user_handlers
             await user_handlers.manejar_callback_usuario(update, context)
+        
+        # Respuestas
         elif data.startswith('resp_'):
             from src.user_handlers import user_handlers
             await user_handlers.manejar_respuesta(update, context)
+        
+        # Lanzar cuestionario (ya manejado en admin_handlers)
         elif data.startswith('lanzar_'):
-            # Los callbacks de lanzar ya están manejados por admin_handlers
+            # Ya está manejado por el ConversationHandler de lanzar
             pass
+        
         elif data == 'cancelar':
             await cancelar(update, context)
+        
         elif data == 'ver_correctas':
             sesion = db.obtener_sesion_activa(update.effective_user.id)
             if sesion:
