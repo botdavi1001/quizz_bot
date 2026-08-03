@@ -256,8 +256,6 @@ def configurar_bot() -> Application:
     # HANDLERS DE ADMIN (desde admin_handlers.py)
     # ============================================================
     
-    # Registrar todos los handlers del admin
-    # Importamos AQUÍ para evitar import circular
     from src.admin_handlers import admin_handlers
     admin_handlers.registrar_handlers(application)
     
@@ -265,12 +263,11 @@ def configurar_bot() -> Application:
     # HANDLERS DE USUARIO (desde user_handlers.py)
     # ============================================================
     
-    # Registrar todos los handlers del usuario
     from src.user_handlers import user_handlers
     user_handlers.registrar_handlers(application)
     
     # ============================================================
-    # HANDLER DE MENSAJES DE TEXTO (para botones de menú)
+    # HANDLER DE MENSAJES DE TEXTO (SOLO PARA EL MENÚ PRINCIPAL)
     # ============================================================
     
     async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -279,10 +276,8 @@ def configurar_bot() -> Application:
         
         # Verificar si es admin
         if es_admin(update):
-            # Importar AQUÍ para evitar import circular
             from src.admin_handlers import admin_handlers
             
-            # Botones del admin
             if text == config.BOTON_ADMIN['crear']:
                 await admin_handlers.iniciar_crear_preguntas(update, context)
             elif text == config.BOTON_ADMIN['csv']:
@@ -303,7 +298,6 @@ def configurar_bot() -> Application:
                     parse_mode='Markdown'
                 )
         else:
-            # Botones del usuario
             from src.user_handlers import user_handlers
             
             if text == config.BOTON_USUARIO['responder']:
@@ -316,7 +310,16 @@ def configurar_bot() -> Application:
                     parse_mode='Markdown'
                 )
     
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_menu))
+    # IMPORTANTE: Este handler SOLO se activa si no hay una conversación activa
+    # Lo ponemos en un grupo con prioridad más baja (grupo 2) para que los
+    # ConversationHandlers (grupo 0) tengan prioridad
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND, 
+            manejar_menu
+        ),
+        group=2  # Prioridad más baja
+    )
     
     # ============================================================
     # HANDLER DE CALLBACK QUERY (botones inline)
@@ -329,7 +332,6 @@ def configurar_bot() -> Application:
         
         data = query.data
         
-        # Delegar según el tipo de callback
         if data.startswith('admin_'):
             from src.admin_handlers import admin_handlers
             await admin_handlers.manejar_callback_admin(update, context)
@@ -342,7 +344,6 @@ def configurar_bot() -> Application:
         elif data == 'cancelar':
             await cancelar(update, context)
         elif data == 'ver_correctas':
-            # Obtener sesión activa
             sesion = db.obtener_sesion_activa(update.effective_user.id)
             if sesion:
                 from src.cuestionario import mostrar_respuestas_correctas
@@ -357,15 +358,13 @@ def configurar_bot() -> Application:
     # ============================================================
     
     async def manejar_error(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Maneja errores del bot"""
         error = context.error
         log_error(f"Error en el bot: {str(error)}")
         
         try:
             if update and update.effective_message:
                 await update.effective_message.reply_text(
-                    "❌ Ocurrió un error. Intenta de nuevo más tarde.\n"
-                    "Si el problema persiste, contacta al administrador.",
+                    "❌ Ocurrió un error. Intenta de nuevo más tarde.",
                     parse_mode='Markdown'
                 )
         except:
