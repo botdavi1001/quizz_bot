@@ -286,11 +286,7 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await user_handlers.iniciar_responder(update, context)
         elif text == config.BOTON_USUARIO['mi_historial']:
             await user_handlers.mostrar_mi_historial(update, context)
-        else:
-            await update.message.reply_text(
-                "❌ Opción no reconocida. Usa los botones del menú.",
-                parse_mode='Markdown'
-            )
+        
 
 
 # ============================================================
