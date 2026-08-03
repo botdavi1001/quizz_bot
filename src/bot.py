@@ -22,7 +22,8 @@ from telegram.ext import (
 from src import config
 from src.database import db
 from src.utils import log_info, log_error
-from src.estados import *  # Importar todos los estados desde el archivo separado
+from src.estados import *
+
 
 # ============================================================
 # FUNCIÓN PARA VERIFICAR ADMIN
@@ -49,6 +50,22 @@ def obtener_admin_id() -> Optional[int]:
     except:
         return None
 
+
+# ============================================================
+# FUNCIONES PARA VERIFICAR CONVERSACIÓN ACTIVA
+# ============================================================
+
+def esta_en_conversacion(context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Verifica si el usuario está en medio de una conversación"""
+    # Verificar si hay un estado de conversación activo
+    if context.user_data.get('conversation_state'):
+        return True
+    # Verificar si hay un diálogo activo en los handlers
+    if context.user_data.get('in_conversation'):
+        return True
+    return False
+
+
 # ============================================================
 # MANEJADORES DE MENSAJES PRINCIPALES
 # ============================================================
@@ -69,9 +86,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra el panel de administrador"""
-    # Importar admin_handlers AQUÍ para evitar import circular
-    from src.admin_handlers import admin_handlers
-    
     keyboard = [
         [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
         [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
@@ -169,12 +183,13 @@ async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode='Markdown'
     )
 
+
 # ============================================================
-# MANEJADOR DE ADMIN /admin*
+# MANEJADOR DE ADMIN /admin_registro
 # ============================================================
 
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja el comando /admin* CONTRASEÑA"""
+    """Maneja el comando /admin_registro CONTRASEÑA"""
     user = update.effective_user
     user_id = user.id
     
@@ -220,8 +235,8 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela cualquier conversación en curso"""
-    if 'conversation_state' in context.user_data:
-        context.user_data.clear()
+    # Limpiar datos de conversación
+    context.user_data.clear()
     
     await update.message.reply_text(
         "✅ Operación cancelada.",
@@ -233,6 +248,56 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mostrar_panel_admin(update, context)
     else:
         await mostrar_panel_usuario(update, context)
+
+
+# ============================================================
+# HANDLER DEL MENÚ PRINCIPAL
+# ============================================================
+
+async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja los mensajes de texto del menú principal (SOLO si NO hay conversación)"""
+    # Si hay una conversación activa, IGNORAR este handler
+    if esta_en_conversacion(context):
+        return
+    
+    text = update.message.text
+    
+    # Verificar si es admin
+    if es_admin(update):
+        from src.admin_handlers import admin_handlers
+        
+        if text == config.BOTON_ADMIN['crear']:
+            await admin_handlers.iniciar_crear_preguntas(update, context)
+        elif text == config.BOTON_ADMIN['csv']:
+            await admin_handlers.iniciar_subir_csv(update, context)
+        elif text == config.BOTON_ADMIN['historial']:
+            await admin_handlers.mostrar_historial(update, context)
+        elif text == config.BOTON_ADMIN['configurar']:
+            await admin_handlers.mostrar_configuracion(update, context)
+        elif text == config.BOTON_ADMIN['lanzar']:
+            await admin_handlers.iniciar_lanzar_cuestionario(update, context)
+        elif text == config.BOTON_ADMIN['gestionar']:
+            await admin_handlers.mostrar_gestion(update, context)
+        elif text == config.BOTON_ADMIN['respaldos']:
+            await admin_handlers.mostrar_respaldos(update, context)
+        else:
+            await update.message.reply_text(
+                "❌ Opción no reconocida. Usa los botones del menú.",
+                parse_mode='Markdown'
+            )
+    else:
+        from src.user_handlers import user_handlers
+        
+        if text == config.BOTON_USUARIO['responder']:
+            await user_handlers.iniciar_responder(update, context)
+        elif text == config.BOTON_USUARIO['mi_historial']:
+            await user_handlers.mostrar_mi_historial(update, context)
+        else:
+            await update.message.reply_text(
+                "❌ Opción no reconocida. Usa los botones del menú.",
+                parse_mode='Markdown'
+            )
+
 
 # ============================================================
 # CONFIGURACIÓN DE LA APLICACIÓN
@@ -253,72 +318,31 @@ def configurar_bot() -> Application:
     application.add_handler(CommandHandler("cancelar", cancelar))
     
     # ============================================================
-    # HANDLERS DE ADMIN (desde admin_handlers.py)
+    # HANDLERS DE ADMIN (ConversationHandlers)
     # ============================================================
     
     from src.admin_handlers import admin_handlers
     admin_handlers.registrar_handlers(application)
     
     # ============================================================
-    # HANDLERS DE USUARIO (desde user_handlers.py)
+    # HANDLERS DE USUARIO (ConversationHandlers)
     # ============================================================
     
     from src.user_handlers import user_handlers
     user_handlers.registrar_handlers(application)
     
     # ============================================================
-    # HANDLER DE MENSAJES DE TEXTO (SOLO PARA EL MENÚ PRINCIPAL)
+    # HANDLER DE MENÚ - CON PRIORIDAD MUY BAJA
     # ============================================================
     
-    async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Maneja los mensajes de texto del menú principal"""
-        text = update.message.text
-        
-        # Verificar si es admin
-        if es_admin(update):
-            from src.admin_handlers import admin_handlers
-            
-            if text == config.BOTON_ADMIN['crear']:
-                await admin_handlers.iniciar_crear_preguntas(update, context)
-            elif text == config.BOTON_ADMIN['csv']:
-                await admin_handlers.iniciar_subir_csv(update, context)
-            elif text == config.BOTON_ADMIN['historial']:
-                await admin_handlers.mostrar_historial(update, context)
-            elif text == config.BOTON_ADMIN['configurar']:
-                await admin_handlers.mostrar_configuracion(update, context)
-            elif text == config.BOTON_ADMIN['lanzar']:
-                await admin_handlers.iniciar_lanzar_cuestionario(update, context)
-            elif text == config.BOTON_ADMIN['gestionar']:
-                await admin_handlers.mostrar_gestion(update, context)
-            elif text == config.BOTON_ADMIN['respaldos']:
-                await admin_handlers.mostrar_respaldos(update, context)
-            else:
-                await update.message.reply_text(
-                    "❌ Opción no reconocida. Usa los botones del menú.",
-                    parse_mode='Markdown'
-                )
-        else:
-            from src.user_handlers import user_handlers
-            
-            if text == config.BOTON_USUARIO['responder']:
-                await user_handlers.iniciar_responder(update, context)
-            elif text == config.BOTON_USUARIO['mi_historial']:
-                await user_handlers.mostrar_mi_historial(update, context)
-            else:
-                await update.message.reply_text(
-                    "❌ Opción no reconocida. Usa los botones del menú.",
-                    parse_mode='Markdown'
-                )
-    
-    # IMPORTANTE: Este handler SOLO se activa si no hay una conversación activa
-    # Lo ponemos en un grupo con prioridad más baja (grupo 2) para que los
-    # ConversationHandlers (grupo 0) tengan prioridad
+    # Este handler se ejecuta SOLO si no hay conversación activa
+    # y tiene prioridad baja (grupo 3)
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND, 
             manejar_menu
         ),
-        group=2  # Prioridad más baja
+        group=3
     )
     
     # ============================================================
@@ -349,7 +373,7 @@ def configurar_bot() -> Application:
                 from src.cuestionario import mostrar_respuestas_correctas
                 await mostrar_respuestas_correctas(update, context, sesion['id'])
         else:
-            await update.message.reply_text("❌ Opción no reconocida.")
+            await query.edit_message_text("❌ Opción no reconocida.")
     
     application.add_handler(CallbackQueryHandler(manejar_callback))
     
@@ -373,6 +397,7 @@ def configurar_bot() -> Application:
     application.add_error_handler(manejar_error)
     
     return application
+
 
 # ============================================================
 # FIN DE bot.py
