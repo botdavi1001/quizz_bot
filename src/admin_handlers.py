@@ -37,6 +37,7 @@ async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TY
     """Cancela la conversación actual y vuelve al menú"""
     user_id = update.effective_user.id
     admin_estado.pop(user_id, None)
+    context.user_data.pop('conversation_state', None)  # <--- AGREGADO
     context.user_data.clear()
     
     await update.message.reply_text(
@@ -55,6 +56,7 @@ async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def iniciar_crear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 1: Preguntar cuántas preguntas"""
+    context.user_data['conversation_state'] = True  # <--- AGREGADO
     admin_estado[update.effective_user.id] = {}
     await update.message.reply_text(
         "📝 **Crear preguntas**\n\n"
@@ -467,6 +469,7 @@ async def guardar_preguntas_en_supabase(update: Update, context: ContextTypes.DE
 
 async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inicia el proceso de subir un archivo CSV"""
+    context.user_data['conversation_state'] = True  # <--- AGREGADO
     user_id = update.effective_user.id
     admin = db.obtener_admin(user_id)
     
@@ -753,6 +756,7 @@ async def mostrar_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def iniciar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 1: Iniciar lanzamiento del cuestionario"""
+    context.user_data['conversation_state'] = True  # <--- AGREGADO
     user_id = update.effective_user.id
     
     admin = db.obtener_admin(user_id)

@@ -75,6 +75,7 @@ user_handlers = UserHandlers()
 
 async def iniciar_responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inicia el proceso de responder un cuestionario"""
+    context.user_data['conversation_state'] = True  # <--- AGREGADO
     user = update.effective_user
     user_id = user.id
     
@@ -510,6 +511,7 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
 async def cancelar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela la respuesta abierta y vuelve al menú"""
     user_id = update.effective_user.id
+    context.user_data.pop('conversation_state', None)  # <--- AGREGADO
     
     # Abandonar sesión si existe
     sesion = db.obtener_sesion_activa(user_id)

@@ -231,6 +231,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela cualquier conversación en curso"""
+    context.user_data.pop('conversation_state', None)  # <--- AGREGADO
     context.user_data.clear()
     
     await update.message.reply_text(
@@ -243,10 +244,6 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await mostrar_panel_usuario(update, context)
 
-
-# ============================================================
-# HANDLER DEL MENÚ PRINCIPAL
-# ============================================================
 
 # ============================================================
 # HANDLER DEL MENÚ PRINCIPAL
