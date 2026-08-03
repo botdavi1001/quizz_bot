@@ -184,7 +184,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if len(partes) < 2:
         await update.message.reply_text(
-            "❌ Uso: `/admin* CONTRASEÑA`\n\n"
+            "❌ Uso: `/admin_registro CONTRASEÑA`\n\n"
             "Reemplaza 'CONTRASEÑA' con la contraseña configurada.",
             parse_mode='Markdown'
         )
@@ -206,7 +206,8 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if exito:
         await update.message.reply_text(
             "✅ **Admin registrado correctamente.**\n\n"
-            "Ya puedes usar el panel de administración.",
+            "Ya puedes usar el panel de administración.\n\n"
+            "Recuerda: Usa el comando `/admin_registro CONTRASEÑA` si necesitas cambiar de dispositivo.",
             parse_mode='Markdown'
         )
         await mostrar_panel_admin(update, context)
@@ -248,7 +249,7 @@ def configurar_bot() -> Application:
     # ============================================================
     
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("admin*", admin_command))
+    application.add_handler(CommandHandler("admin_registro", admin_command))
     application.add_handler(CommandHandler("cancelar", cancelar))
     
     # ============================================================
