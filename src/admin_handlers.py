@@ -29,6 +29,31 @@ from src.estados import *
 
 admin_estado = {}
 
+async def enviar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Envía el panel de administrador manualmente"""
+    user_id = update.effective_user.id
+    admin = db.obtener_admin(user_id)
+    total_preguntas = db.contar_preguntas(admin['id']) if admin else 0
+    cuestionario = db.obtener_cuestionario_activo()
+    cuestionario_nombre = cuestionario.get('nombre', 'Sin nombre') if cuestionario else 'Ninguno activo'
+
+    keyboard = [
+        [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
+        [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
+        [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
+        [config.BOTON_ADMIN['respaldos']]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+    mensaje = f"👑 **Panel de Administrador**\n\n"
+    mensaje += f"📝 Total de preguntas: {total_preguntas}\n"
+    mensaje += f"🚀 Cuestionario activo: {cuestionario_nombre}\n"
+
+    if update.callback_query:
+        await update.callback_query.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
+
 # ============================================================
 # FUNCIÓN PARA CANCELAR CONVERSACIONES
 # ============================================================
@@ -442,6 +467,7 @@ async def guardar_preguntas_en_supabase(update: Update, context: ContextTypes.DE
     exitosas, ids = db.crear_preguntas_masivas(admin['id'], datos_guardar)
     
     admin_estado.pop(user_id, None)
+    context.user_data.pop('conversation_state', None)
     context.user_data.clear()
     
     if exitosas > 0:
@@ -455,8 +481,8 @@ async def guardar_preguntas_en_supabase(update: Update, context: ContextTypes.DE
             parse_mode='Markdown'
         )
     
-    from src.bot import mostrar_panel_admin
-    await mostrar_panel_admin(update, context)
+    # Usar enviar_panel_admin en lugar de mostrar_panel_admin
+    await enviar_panel_admin(update, context)
     return ConversationHandler.END
 
 # ============================================================
