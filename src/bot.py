@@ -19,47 +19,10 @@ from telegram.ext import (
     ConversationHandler
 )
 
-from src import config
+import config
 from src.database import db
 from src.utils import log_info, log_error
-from src.admin_handlers import admin_handlers
-from src.user_handlers import user_handlers
-from src.cuestionario import limpiar_cache
-
-# ============================================================
-# ESTADOS DE CONVERSACIÓN
-# ============================================================
-
-# Estados globales para conversaciones
-(
-    ESPERANDO_PASSWORD,
-    ESPERANDO_CANTIDAD_PREGUNTAS,
-    ESPERANDO_PREGUNTAS_TEXTO,
-    ESPERANDO_FORMATO_LOTES,
-    ESPERANDO_TIEMPO_LOTES,
-    ESPERANDO_RESPUESTAS_PREGUNTA,
-    ESPERANDO_OPCIONES,
-    ESPERANDO_CORRECTAS,
-    ESPERANDO_RESPUESTA_ABIERTA,
-    ESPERANDO_IMAGENES,
-    ESPERANDO_VIDEOS,
-    ESPERANDO_ENLACES,
-    ESPERANDO_CONFIRMACION,
-    ESPERANDO_CSV,
-    ESPERANDO_EDITAR_PREGUNTA,
-    ESPERANDO_ELIMINAR_PREGUNTA,
-    ESPERANDO_LANZAR_NOMBRE,
-    ESPERANDO_LANZAR_CANTIDAD,
-    ESPERANDO_LANZAR_SELECCION,
-    ESPERANDO_LANZAR_FIJAS,
-    ESPERANDO_LANZAR_FILTRO,
-    ESPERANDO_LANZAR_TIEMPO,
-    ESPERANDO_LANZAR_REINTENTOS,
-    ESPERANDO_HISTORIAL_TIPO,
-    ESPERANDO_LIMPIAR_HISTORIAL,
-    ESPERANDO_CONFIGURACION,
-    ESPERANDO_RESPUESTA_ABIERTA_TEXTO,
-) = range(30)
+from src.estados import *  # Importar todos los estados desde el archivo separado
 
 # ============================================================
 # FUNCIÓN PARA VERIFICAR ADMIN
@@ -79,7 +42,6 @@ def es_admin(update: Update) -> bool:
 def obtener_admin_id() -> Optional[int]:
     """Obtiene el ID del admin registrado"""
     try:
-        # Obtener el primer admin (solo debe haber uno)
         result = db.client.table('admins').select('telegram_id').limit(1).execute()
         if result.data:
             return result.data[0]['telegram_id']
@@ -107,6 +69,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra el panel de administrador"""
+    # Importar admin_handlers AQUÍ para evitar import circular
+    from src.admin_handlers import admin_handlers
+    
     keyboard = [
         [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
         [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
@@ -291,6 +256,8 @@ def configurar_bot() -> Application:
     # ============================================================
     
     # Registrar todos los handlers del admin
+    # Importamos AQUÍ para evitar import circular
+    from src.admin_handlers import admin_handlers
     admin_handlers.registrar_handlers(application)
     
     # ============================================================
@@ -298,6 +265,7 @@ def configurar_bot() -> Application:
     # ============================================================
     
     # Registrar todos los handlers del usuario
+    from src.user_handlers import user_handlers
     user_handlers.registrar_handlers(application)
     
     # ============================================================
@@ -310,6 +278,9 @@ def configurar_bot() -> Application:
         
         # Verificar si es admin
         if es_admin(update):
+            # Importar AQUÍ para evitar import circular
+            from src.admin_handlers import admin_handlers
+            
             # Botones del admin
             if text == config.BOTON_ADMIN['crear']:
                 await admin_handlers.iniciar_crear_preguntas(update, context)
@@ -332,6 +303,8 @@ def configurar_bot() -> Application:
                 )
         else:
             # Botones del usuario
+            from src.user_handlers import user_handlers
+            
             if text == config.BOTON_USUARIO['responder']:
                 await user_handlers.iniciar_responder(update, context)
             elif text == config.BOTON_USUARIO['mi_historial']:
@@ -357,10 +330,13 @@ def configurar_bot() -> Application:
         
         # Delegar según el tipo de callback
         if data.startswith('admin_'):
+            from src.admin_handlers import admin_handlers
             await admin_handlers.manejar_callback_admin(update, context)
         elif data.startswith('user_'):
+            from src.user_handlers import user_handlers
             await user_handlers.manejar_callback_usuario(update, context)
         elif data.startswith('resp_'):
+            from src.user_handlers import user_handlers
             await user_handlers.manejar_respuesta(update, context)
         elif data == 'cancelar':
             await cancelar(update, context)

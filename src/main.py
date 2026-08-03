@@ -10,7 +10,10 @@ import threading
 from datetime import datetime
 from flask import Flask, request
 
-from src import config
+# Agregar el directorio actual al path para que Python encuentre los módulos
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+import config
 from src.bot import configurar_bot
 from src.database import db
 from src.backup_system import backup

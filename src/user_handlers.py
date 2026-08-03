@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, filters, MessageHandler, CallbackQueryHandler
 
-from src import config
+import config
 from src.database import db
 from src.utils import (
     log_info, log_error,
@@ -27,37 +27,25 @@ from src.cuestionario import (
     limpiar_cache
 )
 from src.backup_system import backup
+from src.estados import *  # Importar todos los estados
 
 # ============================================================
-# ESTADOS DE CONVERSACIÓN (importados desde bot.py)
+# VARIABLES DE ESTADO
 # ============================================================
-
-from src.bot import (
-    ESPERANDO_RESPUESTA_ABIERTA_TEXTO,
-)
 
 # ============================================================
 # REGISTRAR HANDLERS
 # ============================================================
 
-def registrar_handlers(application):
-    """Registra todos los handlers de usuario"""
+class UserHandlers:
+    """Clase para manejar todos los handlers de usuario"""
     
-    # ============================================================
-    # CONVERSACIÓN: RESPONDER CUESTIONARIO
-    # ============================================================
-    
-    responder_conv = ConversationHandler(
-        entry_points=[],
-        states={
-            ESPERANDO_RESPUESTA_ABIERTA_TEXTO: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_respuesta_abierta)
-            ]
-        },
-        fallbacks=[]
-    )
-    
-    application.add_handler(responder_conv)
+    def registrar_handlers(self, application):
+        """Registra todos los handlers de usuario"""
+        # Aquí se registrarán los handlers
+        pass
+
+user_handlers = UserHandlers()
 
 # ============================================================
 # FUNCIONES DE INICIO
@@ -233,6 +221,7 @@ async def manejar_callback_usuario(update: Update, context: ContextTypes.DEFAULT
             db.abandonar_sesion(sesion['id'])
         
         await query.edit_message_text("✅ Cuestionario cancelado.")
+        from src.bot import mostrar_panel_usuario
         await mostrar_panel_usuario(update, context)
     
     elif data == 'resp_abierta':
@@ -488,14 +477,27 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
     
     return ConversationHandler.END
 
+
 # ============================================================
-# FUNCIÓN PARA MOSTRAR PANEL DE USUARIO (desde bot.py)
+# FUNCIÓN AUXILIAR PARA MOSTRAR PANEL DE USUARIO
 # ============================================================
 
-async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra el panel de usuario (importado desde bot.py)"""
-    from src.bot import mostrar_panel_usuario as _mostrar_panel_usuario
-    await _mostrar_panel_usuario(update, context)
+async def mostrar_panel_usuario_local(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Muestra el panel de usuario (wrapper para evitar importación circular)"""
+    from src.bot import mostrar_panel_usuario
+    await mostrar_panel_usuario(update, context)
+
+
+# ============================================================
+# EXPORTAR FUNCIONES
+# ============================================================
+
+# Asignar funciones a user_handlers
+user_handlers.iniciar_responder = iniciar_responder
+user_handlers.mostrar_mi_historial = mostrar_mi_historial
+user_handlers.manejar_callback_usuario = manejar_callback_usuario
+user_handlers.manejar_respuesta = manejar_respuesta
+user_handlers.recibir_respuesta_abierta = recibir_respuesta_abierta
 
 # ============================================================
 # FIN DE user_handlers.py

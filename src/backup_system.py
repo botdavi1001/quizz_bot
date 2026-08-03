@@ -13,6 +13,7 @@ from threading import Lock
 from src import config
 from src.utils import log_info, log_error
 from src.database import db
+from src.estados import *
 
 # ============================================================
 # GESTOR DE RESPALDOS

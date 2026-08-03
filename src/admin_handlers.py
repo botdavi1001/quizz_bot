@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, filters, MessageHandler, CallbackQueryHandler
 
-from src import config
+import config
 from src.database import db
 from src.utils import (
     log_info, log_error,
@@ -39,122 +39,27 @@ from src.cuestionario import (
 )
 from src.backup_system import backup
 from src.image_compressor import procesar_y_subir_imagen, obtener_espacio_usado
-
-# ============================================================
-# ESTADOS DE CONVERSACIÓN (importados desde bot.py)
-# ============================================================
-
-from src.bot import (
-    ESPERANDO_CANTIDAD_PREGUNTAS,
-    ESPERANDO_PREGUNTAS_TEXTO,
-    ESPERANDO_FORMATO_LOTES,
-    ESPERANDO_TIEMPO_LOTES,
-    ESPERANDO_RESPUESTAS_PREGUNTA,
-    ESPERANDO_OPCIONES,
-    ESPERANDO_CORRECTAS,
-    ESPERANDO_RESPUESTA_ABIERTA,
-    ESPERANDO_IMAGENES,
-    ESPERANDO_VIDEOS,
-    ESPERANDO_ENLACES,
-    ESPERANDO_CONFIRMACION,
-    ESPERANDO_CSV,
-    ESPERANDO_EDITAR_PREGUNTA,
-    ESPERANDO_ELIMINAR_PREGUNTA,
-    ESPERANDO_LANZAR_NOMBRE,
-    ESPERANDO_LANZAR_CANTIDAD,
-    ESPERANDO_LANZAR_SELECCION,
-    ESPERANDO_LANZAR_FIJAS,
-    ESPERANDO_LANZAR_FILTRO,
-    ESPERANDO_LANZAR_TIEMPO,
-    ESPERANDO_LANZAR_REINTENTOS,
-    ESPERANDO_HISTORIAL_TIPO,
-    ESPERANDO_LIMPIAR_HISTORIAL,
-    ESPERANDO_CONFIGURACION,
-    ESPERANDO_RESPUESTA_ABIERTA_TEXTO,
-    mostrar_panel_admin,
-)
+from src.estados import *  # Importar todos los estados
 
 # ============================================================
 # VARIABLES DE ESTADO PARA EL ADMIN
 # ============================================================
 
-# Diccionarios para guardar estado durante conversaciones
 admin_estado = {}
 
 # ============================================================
 # REGISTRAR HANDLERS
 # ============================================================
 
-def registrar_handlers(application):
-    """Registra todos los handlers del admin"""
+class AdminHandlers:
+    """Clase para manejar todos los handlers del admin"""
     
-    # ============================================================
-    # CONVERSACIÓN: CREAR PREGUNTAS
-    # ============================================================
-    
-    crear_conv = ConversationHandler(
-        entry_points=[],
-        states={},
-        fallbacks=[]
-    )
-    
-    # ============================================================
-    # CONVERSACIÓN: SUBIR CSV
-    # ============================================================
-    
-    csv_conv = ConversationHandler(
-        entry_points=[],
-        states={},
-        fallbacks=[]
-    )
-    
-    # ============================================================
-    # CONVERSACIÓN: LANZAR CUESTIONARIO
-    # ============================================================
-    
-    lanzar_conv = ConversationHandler(
-        entry_points=[],
-        states={},
-        fallbacks=[]
-    )
-    
-    # ============================================================
-    # CONVERSACIÓN: CONFIGURACIÓN
-    # ============================================================
-    
-    config_conv = ConversationHandler(
-        entry_points=[],
-        states={},
-        fallbacks=[]
-    )
-    
-    # ============================================================
-    # CONVERSACIÓN: GESTIONAR
-    # ============================================================
-    
-    gestion_conv = ConversationHandler(
-        entry_points=[],
-        states={},
-        fallbacks=[]
-    )
-    
-    # ============================================================
-    # CONVERSACIÓN: HISTORIAL
-    # ============================================================
-    
-    historial_conv = ConversationHandler(
-        entry_points=[],
-        states={},
-        fallbacks=[]
-    )
-    
-    # Registrar conversaciones
-    application.add_handler(crear_conv)
-    application.add_handler(csv_conv)
-    application.add_handler(lanzar_conv)
-    application.add_handler(config_conv)
-    application.add_handler(gestion_conv)
-    application.add_handler(historial_conv)
+    def registrar_handlers(self, application):
+        """Registra todos los handlers del admin"""
+        # Aquí se registrarán los handlers
+        pass
+
+admin_handlers = AdminHandlers()
 
 # ============================================================
 # FUNCIONES DE INICIO
@@ -336,6 +241,7 @@ async def mostrar_respaldos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+
 # ============================================================
 # MANEJADORES DE CALLBACK DEL ADMIN
 # ============================================================
@@ -405,7 +311,8 @@ async def manejar_callback_historial(update: Update, context: ContextTypes.DEFAU
     
     elif data == 'hist_cerrar':
         await query.edit_message_text("✅ Historial cerrado.")
-        await mostrar_panel_admin_local(update, context)
+        from src.bot import mostrar_panel_admin
+        await mostrar_panel_admin(update, context)
 
 
 async def manejar_callback_configuracion(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -468,7 +375,8 @@ async def manejar_callback_configuracion(update: Update, context: ContextTypes.D
     
     elif data == 'config_cerrar':
         await query.edit_message_text("✅ Configuración cerrada.")
-        await mostrar_panel_admin_local(update, context)
+        from src.bot import mostrar_panel_admin
+        await mostrar_panel_admin(update, context)
 
 
 async def manejar_callback_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -563,7 +471,8 @@ async def manejar_callback_gestion(update: Update, context: ContextTypes.DEFAULT
     
     elif data == 'gestion_cerrar':
         await query.edit_message_text("✅ Gestión cerrada.")
-        await mostrar_panel_admin_local(update, context)
+        from src.bot import mostrar_panel_admin
+        await mostrar_panel_admin(update, context)
 
 
 async def manejar_callback_respaldos(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -584,7 +493,10 @@ async def manejar_callback_respaldos(update: Update, context: ContextTypes.DEFAU
     
     elif data == 'respaldos_cerrar':
         await query.edit_message_text("✅ Respaldos cerrados.")
-        await mostrar_panel_admin_local(update, context)
+        from src.bot import mostrar_panel_admin
+        await mostrar_panel_admin(update, context)
+
+
 # ============================================================
 # FUNCIÓN AUXILIAR PARA MOSTRAR PANEL ADMIN
 # ============================================================
@@ -593,6 +505,20 @@ async def mostrar_panel_admin_local(update: Update, context: ContextTypes.DEFAUL
     """Muestra el panel de admin (wrapper para evitar importación circular)"""
     from src.bot import mostrar_panel_admin
     await mostrar_panel_admin(update, context)
+
+# ============================================================
+# EXPORTAR FUNCIONES
+# ============================================================
+
+# Asignar funciones a admin_handlers
+admin_handlers.iniciar_crear_preguntas = iniciar_crear_preguntas
+admin_handlers.iniciar_subir_csv = iniciar_subir_csv
+admin_handlers.iniciar_lanzar_cuestionario = iniciar_lanzar_cuestionario
+admin_handlers.mostrar_historial = mostrar_historial
+admin_handlers.mostrar_configuracion = mostrar_configuracion
+admin_handlers.mostrar_gestion = mostrar_gestion
+admin_handlers.mostrar_respaldos = mostrar_respaldos
+admin_handlers.manejar_callback_admin = manejar_callback_admin
 
 # ============================================================
 # FIN DE admin_handlers.py
