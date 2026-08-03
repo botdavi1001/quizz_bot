@@ -40,35 +40,6 @@ def iniciar_servidor():
 # FUNCIÓN PRINCIPAL
 # ============================================================
 
-def main():
-    """Función principal sincrónica que inicia todo"""
-    log_info("=" * 50)
-    log_info("📱 BOT DE TELEGRAM - CUESTIONARIOS")
-    log_info("=" * 50)
-    log_info(f"🕐 Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # Iniciar Flask en un hilo separado
-    log_info(f"🌐 Iniciando servidor web en puerto {config.PORT}...")
-    import threading
-    servidor_thread = threading.Thread(target=iniciar_servidor, daemon=True)
-    servidor_thread.start()
-    log_info("✅ Servidor web iniciado")
-    
-    # Crear un nuevo event loop para el bot
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    try:
-        # Ejecutar el bot
-        loop.run_until_complete(ejecutar_bot())
-    except KeyboardInterrupt:
-        log_info("🛑 Bot detenido por el usuario")
-    except Exception as e:
-        log_error(f"❌ Error fatal: {str(e)}")
-        sys.exit(1)
-    finally:
-        loop.close()
-
 async def ejecutar_bot():
     """Función asíncrona que ejecuta el bot"""
     
@@ -118,4 +89,16 @@ async def ejecutar_bot():
 # ============================================================
 
 if __name__ == '__main__':
-    main()
+    import threading
+    
+    # Iniciar Flask en hilo
+    threading.Thread(target=iniciar_servidor, daemon=True).start()
+    
+    # Ejecutar el bot usando asyncio.run()
+    try:
+        asyncio.run(ejecutar_bot())
+    except KeyboardInterrupt:
+        log_info("🛑 Bot detenido por el usuario")
+    except Exception as e:
+        log_error(f"❌ Error fatal: {str(e)}")
+        sys.exit(1)
