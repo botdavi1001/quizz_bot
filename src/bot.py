@@ -57,10 +57,8 @@ def obtener_admin_id() -> Optional[int]:
 
 def esta_en_conversacion(context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Verifica si el usuario está en medio de una conversación"""
-    # Verificar si hay un estado de conversación activo
     if context.user_data.get('conversation_state'):
         return True
-    # Verificar si hay un diálogo activo en los handlers
     if context.user_data.get('in_conversation'):
         return True
     return False
@@ -75,12 +73,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     
-    # Verificar si es admin
     if es_admin(update):
         await mostrar_panel_admin(update, context)
         return
     
-    # Usuario normal
     await mostrar_panel_usuario(update, context)
 
 
@@ -95,23 +91,19 @@ async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    # Verificar estadísticas y límites
     mensaje = "👑 **Panel de Administrador**\n\n"
     
-    # Contar preguntas
     admin = db.obtener_admin(update.effective_user.id)
     if admin:
         total_preguntas = db.contar_preguntas(admin['id'])
         mensaje += f"📝 Total de preguntas: {total_preguntas}\n"
         
-        # Verificar cuestionario activo
         cuestionario = db.obtener_cuestionario_activo()
         if cuestionario:
             mensaje += f"🚀 Cuestionario activo: {cuestionario.get('nombre', 'Sin nombre')}\n"
         else:
             mensaje += "📭 No hay cuestionario activo\n"
         
-        # Verificar historial
         total_historial = db.contar_historial_total()
         if total_historial >= config.LIMITE_HISTORIAL_AVISO:
             mensaje += f"⚠️ Historial: {total_historial} registros (cerca del límite)\n"
@@ -125,7 +117,6 @@ async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra el panel de usuario normal"""
-    # Verificar si hay preguntas
     admin_id = obtener_admin_id()
     if not admin_id:
         await update.message.reply_text(
@@ -142,7 +133,6 @@ async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
     
-    # Contar preguntas
     total_preguntas = db.contar_preguntas(admin['id'])
     if total_preguntas == 0:
         await update.message.reply_text(
@@ -151,7 +141,6 @@ async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
     
-    # Verificar cuestionario activo
     cuestionario = db.obtener_cuestionario_activo()
     if not cuestionario:
         await update.message.reply_text(
@@ -160,7 +149,6 @@ async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
     
-    # Verificar si tiene una sesión activa
     sesion = db.obtener_sesion_activa(update.effective_user.id)
     
     keyboard = [
@@ -193,7 +181,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     
-    # Obtener el texto del comando
     text = update.message.text
     partes = text.split(' ', 1)
     
@@ -207,12 +194,10 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     password = partes[1].strip()
     
-    # Verificar contraseña
     if password != config.ADMIN_PASSWORD:
         await update.message.reply_text("❌ Contraseña incorrecta.")
         return
     
-    # Registrar admin
     username = user.username
     first_name = user.first_name or "Admin"
     
@@ -235,7 +220,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela cualquier conversación en curso"""
-    # Limpiar datos de conversación
     context.user_data.clear()
     
     await update.message.reply_text(
@@ -243,7 +227,6 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
-    # Volver al panel correspondiente
     if es_admin(update):
         await mostrar_panel_admin(update, context)
     else:
@@ -255,14 +238,13 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja los mensajes de texto del menú principal (SOLO si NO hay conversación)"""
+    """Maneja los mensajes de texto del menú principal"""
     # Si hay una conversación activa, IGNORAR este handler
     if esta_en_conversacion(context):
         return
     
     text = update.message.text
     
-    # Verificar si es admin
     if es_admin(update):
         from src.admin_handlers import admin_handlers
         
@@ -275,7 +257,7 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text == config.BOTON_ADMIN['configurar']:
             await admin_handlers.mostrar_configuracion(update, context)
         elif text == config.BOTON_ADMIN['lanzar']:
-            await admin_handlers.iniciar_lanzar_cuestionario(update, context)
+            await admin_handlers.iniciar_lanzar(update, context)
         elif text == config.BOTON_ADMIN['gestionar']:
             await admin_handlers.mostrar_gestion(update, context)
         elif text == config.BOTON_ADMIN['respaldos']:
@@ -308,31 +290,94 @@ def configurar_bot() -> Application:
     
     application = Application.builder().token(config.TELEGRAM_TOKEN).build()
     
-    # Comandos
+    # ============================================================
+    # COMANDOS
+    # ============================================================
+    
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin_registro", admin_command))
     application.add_handler(CommandHandler("cancelar", cancelar))
     
-    # Handlers de admin (ConversationHandlers)
+    # ============================================================
+    # HANDLERS DE ADMIN (ConversationHandlers)
+    # ============================================================
+    
     from src.admin_handlers import admin_handlers
     admin_handlers.registrar_handlers(application)
     
-    # Handlers de usuario (ConversationHandlers)
+    # ============================================================
+    # HANDLERS DE USUARIO (ConversationHandlers)
+    # ============================================================
+    
     from src.user_handlers import user_handlers
     user_handlers.registrar_handlers(application)
     
     # ============================================================
-    # IMPORTANTE: NO AGREGAR MessageHandler adicional aquí
-    # Los ConversationHandlers ya capturan los mensajes
+    # HANDLER DE MENÚ - CON PRIORIDAD BAJA (group=2)
     # ============================================================
     
-    # Callback Query
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            manejar_menu
+        ),
+        group=2  # Prioridad más baja que los ConversationHandlers (que son grupo 0)
+    )
+    
+    # ============================================================
+    # HANDLER DE CALLBACK QUERY (botones inline)
+    # ============================================================
+    
     async def manejar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Maneja todas las respuestas de botones inline"""
         query = update.callback_query
         await query.answer()
-        await query.edit_message_text("⚠️ Función en desarrollo.")
+        
+        data = query.data
+        
+        # Delegar según el tipo de callback
+        if data.startswith('admin_'):
+            from src.admin_handlers import admin_handlers
+            await admin_handlers.manejar_callback_admin(update, context)
+        elif data.startswith('user_'):
+            from src.user_handlers import user_handlers
+            await user_handlers.manejar_callback_usuario(update, context)
+        elif data.startswith('resp_'):
+            from src.user_handlers import user_handlers
+            await user_handlers.manejar_respuesta(update, context)
+        elif data.startswith('lanzar_'):
+            # Los callbacks de lanzar ya están manejados por admin_handlers
+            pass
+        elif data == 'cancelar':
+            await cancelar(update, context)
+        elif data == 'ver_correctas':
+            sesion = db.obtener_sesion_activa(update.effective_user.id)
+            if sesion:
+                from src.cuestionario import mostrar_respuestas_correctas
+                await mostrar_respuestas_correctas(update, context, sesion['id'])
+        else:
+            await query.edit_message_text("❌ Opción no reconocida.")
     
     application.add_handler(CallbackQueryHandler(manejar_callback))
+    
+    # ============================================================
+    # HANDLER DE ERRORES
+    # ============================================================
+    
+    async def manejar_error(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        error = context.error
+        log_error(f"Error en el bot: {str(error)}")
+        
+        try:
+            if update and update.effective_message:
+                await update.effective_message.reply_text(
+                    "❌ Ocurrió un error. Intenta de nuevo más tarde.",
+                    parse_mode='Markdown'
+                )
+        except:
+            pass
+    
+    application.add_error_handler(manejar_error)
     
     return application
 
