@@ -1231,11 +1231,10 @@ def registrar_handlers(application, group=1):
 # ============================================================
 
 class AdminHandlers:
-    def registrar_handlers(self, application):
-        registrar_handlers(application)
+    def registrar_handlers(self, application, group=1):
+        registrar_handlers(application, group=group)
 
 admin_handlers = AdminHandlers()
-
 # ============================================================
 # FIN DE admin_handlers.py
 # ============================================================
