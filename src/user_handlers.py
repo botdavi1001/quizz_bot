@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, ConversationHandler, filters, MessageHandler, CallbackQueryHandler
+from telegram.ext import ContextTypes, ConversationHandler, filters, MessageHandler, CallbackQueryHandler, CommandHandler
 
 from src import config
 from src.database import db
@@ -27,11 +27,13 @@ from src.cuestionario import (
     limpiar_cache
 )
 from src.backup_system import backup
-from src.estados import *  # Importar todos los estados
+from src.estados import *
 
 # ============================================================
 # VARIABLES DE ESTADO
 # ============================================================
+
+user_estado = {}
 
 # ============================================================
 # REGISTRAR HANDLERS
@@ -42,8 +44,28 @@ class UserHandlers:
     
     def registrar_handlers(self, application):
         """Registra todos los handlers de usuario"""
-        # Aquí se registrarán los handlers
-        pass
+        
+        # ============================================================
+        # CONVERSACIÓN: RESPUESTA ABIERTA
+        # ============================================================
+        
+        respuesta_abierta_conv = ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(manejar_callback_usuario, pattern="^resp_abierta$")
+            ],
+            states={
+                ESPERANDO_RESPUESTA_ABIERTA_TEXTO: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_respuesta_abierta)
+                ]
+            },
+            fallbacks=[
+                CommandHandler("cancelar", cancelar_respuesta)
+            ],
+            allow_reentry=True,
+            per_message=False,
+        )
+        
+        application.add_handler(respuesta_abierta_conv)
 
 user_handlers = UserHandlers()
 
@@ -240,6 +262,7 @@ async def manejar_callback_usuario(update: Update, context: ContextTypes.DEFAULT
 async def manejar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja las respuestas de los botones inline (opciones múltiple, V/F)"""
     query = update.callback_query
+    await query.answer()
     data = query.data
     
     user_id = update.effective_user.id
@@ -304,12 +327,13 @@ async def manejar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         correctas = pregunta.get('respuestas_correctas', [])
         es_correcta = opcion_seleccionada in correctas if correctas else False
         
-        # Guardar respuesta
+        # Calcular tiempo tardado
         tiempo_tardado = 0
         if 'tiempo_inicio' in context.user_data:
             inicio = context.user_data['tiempo_inicio']
             tiempo_tardado = int((datetime.now() - inicio).total_seconds())
         
+        # Guardar respuesta
         exito = db.guardar_respuesta_sesion(
             sesion['id'],
             pregunta['id'],
@@ -327,6 +351,9 @@ async def manejar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'es_correcta': es_correcta,
                 'tiempo_tardado': tiempo_tardado
             })
+        
+        # Limpiar tiempo de contexto
+        context.user_data.pop('tiempo_inicio', None)
         
         # Mostrar feedback
         if es_correcta:
@@ -414,7 +441,6 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
     es_manual = True
     
     # Verificar si es manual o automática
-    # Si tiene respuestas_correctas definidas, es automática
     if pregunta.get('respuestas_correctas'):
         es_correcta, es_manual = verificar_respuesta_abierta(
             respuesta_normalizada,
@@ -444,6 +470,9 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
             'es_correcta': es_correcta,
             'tiempo_tardado': tiempo_tardado
         })
+    
+    # Limpiar tiempo de contexto
+    context.user_data.pop('tiempo_inicio', None)
     
     # Mostrar feedback
     if es_manual:
@@ -475,6 +504,27 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
             len(preguntas)
         )
     
+    return ConversationHandler.END
+
+
+async def cancelar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancela la respuesta abierta y vuelve al menú"""
+    user_id = update.effective_user.id
+    
+    # Abandonar sesión si existe
+    sesion = db.obtener_sesion_activa(user_id)
+    if sesion:
+        db.abandonar_sesion(sesion['id'])
+    
+    context.user_data.clear()
+    
+    await update.message.reply_text(
+        "✅ Respuesta cancelada. Volviendo al menú...",
+        parse_mode='Markdown'
+    )
+    
+    from src.bot import mostrar_panel_usuario
+    await mostrar_panel_usuario(update, context)
     return ConversationHandler.END
 
 
