@@ -1131,75 +1131,92 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if data == 'lanzar_cancelar_final':
         admin_estado.pop(user_id, None)
+        context.user_data.pop('conversation_state', None)
         await query.edit_message_text("✅ Lanzamiento cancelado.")
         from src.bot import mostrar_panel_admin
         await mostrar_panel_admin(update, context)
         return ConversationHandler.END
     
     if data == 'lanzar_confirmar':
-        estado = admin_estado.get(user_id, {})
-        admin = db.obtener_admin(user_id)
-        
-        if not admin:
-            await query.edit_message_text("❌ No eres admin.")
-            return ConversationHandler.END
-        
-        preguntas_ids = estado.get('preguntas_ids', [])
-        seleccion_tipo = estado.get('seleccion_tipo', 'azar')
-        
-        if not preguntas_ids:
-            todas_preguntas = db.obtener_preguntas(admin['id'])
-            cantidad = estado.get('cantidad', 0)
+        try:
+            estado = admin_estado.get(user_id, {})
+            admin = db.obtener_admin(user_id)
             
-            if seleccion_tipo == 'azar':
-                seleccionadas = random.sample(todas_preguntas, min(cantidad, len(todas_preguntas)))
-                preguntas_ids = [p['id'] for p in seleccionadas]
+            if not admin:
+                await query.edit_message_text("❌ No eres admin.")
+                return ConversationHandler.END
             
-            elif seleccion_tipo == 'filtro':
-                filtros = estado.get('filtros', {})
-                seleccionadas = []
-                
-                for tipo, cantidad_tipo in filtros.items():
-                    disponibles = [p for p in todas_preguntas if p.get('tipo') == tipo]
-                    if disponibles:
-                        elegidas = random.sample(disponibles, min(cantidad_tipo, len(disponibles)))
-                        seleccionadas.extend(elegidas)
-                
-                if len(seleccionadas) < cantidad:
-                    restantes = [p for p in todas_preguntas if p not in seleccionadas]
-                    faltantes = cantidad - len(seleccionadas)
-                    if restantes:
-                        seleccionadas.extend(random.sample(restantes, min(faltantes, len(restantes))))
-                
-                preguntas_ids = [p['id'] for p in seleccionadas]
-        
-        cuestionario_id = db.crear_cuestionario(
-            admin_id=admin['id'],
-            nombre=estado.get('nombre', 'Sin nombre'),
-            preguntas_ids=preguntas_ids,
-            seleccion_tipo=seleccion_tipo,
-            reintentos=estado.get('reintentos', config.REINTENTOS_DEFAULT)
-        )
-        
-        if cuestionario_id:
-            mensaje = f"✅ **¡Cuestionario lanzado exitosamente!**\n\n"
-            mensaje += f"📌 Nombre: {estado.get('nombre')}\n"
-            mensaje += f"📊 Preguntas: {len(preguntas_ids)}\n"
-            mensaje += f"🔄 Reintentos: {estado.get('reintentos', 0)}\n\n"
-            mensaje += "Los usuarios ya pueden responder desde el panel de usuario."
+            preguntas_ids = estado.get('preguntas_ids', [])
+            seleccion_tipo = estado.get('seleccion_tipo', 'azar')
             
-            await query.edit_message_text(mensaje, parse_mode='Markdown')
-        else:
+            if not preguntas_ids:
+                todas_preguntas = db.obtener_preguntas(admin['id'])
+                cantidad = estado.get('cantidad', 0)
+                
+                if seleccion_tipo == 'azar':
+                    seleccionadas = random.sample(todas_preguntas, min(cantidad, len(todas_preguntas)))
+                    preguntas_ids = [p['id'] for p in seleccionadas]
+                
+                elif seleccion_tipo == 'filtro':
+                    filtros = estado.get('filtros', {})
+                    seleccionadas = []
+                    
+                    for tipo, cantidad_tipo in filtros.items():
+                        disponibles = [p for p in todas_preguntas if p.get('tipo') == tipo]
+                        if disponibles:
+                            elegidas = random.sample(disponibles, min(cantidad_tipo, len(disponibles)))
+                            seleccionadas.extend(elegidas)
+                    
+                    if len(seleccionadas) < cantidad:
+                        restantes = [p for p in todas_preguntas if p not in seleccionadas]
+                        faltantes = cantidad - len(seleccionadas)
+                        if restantes:
+                            seleccionadas.extend(random.sample(restantes, min(faltantes, len(restantes))))
+                    
+                    preguntas_ids = [p['id'] for p in seleccionadas]
+            
+            cuestionario_id = db.crear_cuestionario(
+                admin_id=admin['id'],
+                nombre=estado.get('nombre', 'Sin nombre'),
+                preguntas_ids=preguntas_ids,
+                seleccion_tipo=seleccion_tipo,
+                reintentos=estado.get('reintentos', config.REINTENTOS_DEFAULT)
+            )
+            
+            # Limpiar estado ANTES de mostrar el mensaje
+            admin_estado.pop(user_id, None)
+            context.user_data.pop('conversation_state', None)
+            
+            if cuestionario_id:
+                mensaje = f"✅ **¡Cuestionario lanzado exitosamente!**\n\n"
+                mensaje += f"📌 Nombre: {estado.get('nombre')}\n"
+                mensaje += f"📊 Preguntas: {len(preguntas_ids)}\n"
+                mensaje += f"🔄 Reintentos: {estado.get('reintentos', 0)}\n\n"
+                mensaje += "Los usuarios ya pueden responder desde el panel de usuario."
+                
+                await query.edit_message_text(mensaje, parse_mode='Markdown')
+            else:
+                await query.edit_message_text(
+                    "❌ Error al guardar el cuestionario. Intenta de nuevo.",
+                    parse_mode='Markdown'
+                )
+            
+            # Volver al menú
+            from src.bot import mostrar_panel_admin
+            await mostrar_panel_admin(update, context)
+            
+        except Exception as e:
+            log_error(f"❌ Error en confirmar_lanzar: {str(e)}")
+            import traceback
+            log_error(traceback.format_exc())
             await query.edit_message_text(
-                "❌ Error al guardar el cuestionario. Intenta de nuevo.",
+                f"❌ Error al lanzar el cuestionario: {str(e)[:100]}",
                 parse_mode='Markdown'
             )
+            admin_estado.pop(user_id, None)
+            context.user_data.pop('conversation_state', None)
         
-        admin_estado.pop(user_id, None)
-        from src.bot import mostrar_panel_admin
-        await mostrar_panel_admin(update, context)
         return ConversationHandler.END
-
 
 # ============================================================
 # GESTIONAR - EN DESARROLLO
