@@ -19,7 +19,7 @@ from telegram.ext import (
     ConversationHandler
 )
 
-import config
+from src import config
 from src.database import db
 from src.utils import log_info, log_error
 from src.estados import *  # Importar todos los estados desde el archivo separado
