@@ -50,7 +50,7 @@ async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 # ============================================================
-# FUNCIONES DE CREACIÓN DE PREGUNTAS (FUERA de registrar_handlers)
+# FUNCIONES DE CREACIÓN DE PREGUNTAS
 # ============================================================
 
 async def iniciar_crear(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -458,18 +458,116 @@ async def guardar_preguntas_en_supabase(update: Update, context: ContextTypes.DE
     return ConversationHandler.END
 
 # ============================================================
-# FUNCIONES DE HISTORIAL Y OTROS (FUERA de registrar_handlers)
+# FUNCIONES DE HISTORIAL Y OTROS
+# ============================================================
+
+# ============================================================
+# SUBIR CSV - COMPLETO
 # ============================================================
 
 async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inicia la subida de CSV"""
-    await update.message.reply_text(
-        "📂 **Subir CSV**\n\n"
-        "Esta función está en desarrollo.\n"
-        "Por ahora, usa la creación manual.",
+    """Inicia el proceso de subir un archivo CSV"""
+    user_id = update.effective_user.id
+    admin = db.obtener_admin(user_id)
+    
+    if not admin:
+        await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
+        return ConversationHandler.END
+    
+    # Guardar el admin_id en el estado
+    admin_estado[user_id] = {'admin_id': admin['id']}
+    
+    # Generar y enviar archivo de ejemplo
+    from src.csv_processor import generar_csv_ejemplo
+    
+    ejemplo = generar_csv_ejemplo()
+    
+    await update.message.reply_document(
+        document=ejemplo,
+        filename="ejemplo.csv",
+        caption="📂 **Subir CSV**\n\n"
+                "Descarga este archivo de ejemplo, edítalo y súbelo.\n\n"
+                "**Columnas:**\n"
+                "• `pregunta`: El texto de la pregunta (obligatorio)\n"
+                "• `tipo`: `multiple`, `vf` o `abierta` (obligatorio)\n"
+                "• `opciones`: Separadas por `;` (ej: `La Habana;Santiago;Camagüey`)\n"
+                "• `correctas`: Números separados por coma (ej: `1` o `1,3`), o `V`/`F` para VF\n"
+                "• `tiempo`: Segundos (0 = sin límite)\n"
+                "• `imagen_url`: URL de imagen (opcional)\n"
+                "• `video_url`: URL de video (opcional)\n"
+                "• `enlace`: URL adicional (opcional)\n\n"
+                "Sube el archivo CSV cuando esté listo.",
         parse_mode='Markdown'
     )
-    return ConversationHandler.END
+    
+    # Cambiar el estado para esperar el archivo
+    admin_estado[user_id]['esperando_csv'] = True
+    return ESPERANDO_CSV
+
+
+async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recibe y procesa el archivo CSV"""
+    user_id = update.effective_user.id
+    estado = admin_estado.get(user_id, {})
+    
+    if not estado.get('esperando_csv'):
+        return
+    
+    # Verificar que sea un documento
+    if not update.message.document:
+        await update.message.reply_text(
+            "❌ Por favor, sube un archivo CSV (no un mensaje de texto).",
+            parse_mode='Markdown'
+        )
+        return ESPERANDO_CSV
+    
+    # Verificar que sea un archivo CSV
+    documento = update.message.document
+    nombre_archivo = documento.file_name or ""
+    
+    if not nombre_archivo.lower().endswith('.csv'):
+        await update.message.reply_text(
+            "❌ El archivo debe tener extensión `.csv`.\n"
+            "Por favor, sube un archivo CSV válido.",
+            parse_mode='Markdown'
+        )
+        return ESPERANDO_CSV
+    
+    # Descargar el archivo
+    try:
+        archivo = await documento.get_file()
+        contenido = await archivo.download_as_bytearray()
+        
+        # Procesar el CSV
+        from src.csv_processor import procesar_csv, formatear_resultado_csv
+        
+        admin_id = estado.get('admin_id')
+        exitosas, fallidas, errores = procesar_csv(bytes(contenido), admin_id)
+        
+        # Mostrar resultado
+        mensaje = formatear_resultado_csv(exitosas, fallidas, errores)
+        await update.message.reply_text(mensaje, parse_mode='Markdown')
+        
+        # Limpiar estado
+        admin_estado.pop(user_id, None)
+        
+        # Volver al menú
+        from src.bot import mostrar_panel_admin
+        await mostrar_panel_admin(update, context)
+        return ConversationHandler.END
+        
+    except Exception as e:
+        log_error(f"Error procesando CSV: {str(e)}")
+        await update.message.reply_text(
+            f"❌ Error al procesar el archivo: {str(e)[:200]}\n\n"
+            "Verifica que el archivo tenga el formato correcto.",
+            parse_mode='Markdown'
+        )
+        return ESPERANDO_CSV
+
+# ============================================================
+# HISTORIAL
+# ============================================================
 
 async def mostrar_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra el menú de historial para el admin"""
@@ -529,6 +627,7 @@ async def mostrar_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Revisa los logs de Render para más detalles.",
             parse_mode='Markdown'
         )
+
 
 async def manejar_callback_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los callbacks del historial"""
@@ -592,6 +691,7 @@ async def manejar_callback_historial(update: Update, context: ContextTypes.DEFAU
             parse_mode='Markdown'
         )
 
+
 async def recibir_limpieza_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Recibe la confirmación para limpiar historial"""
     texto = update.message.text.strip()
@@ -633,6 +733,11 @@ async def recibir_limpieza_historial(update: Update, context: ContextTypes.DEFAU
     admin_estado.pop(user_id, None)
     await mostrar_historial(update, context)
 
+
+# ============================================================
+# CONFIGURACIÓN - EN DESARROLLO
+# ============================================================
+
 async def mostrar_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra la configuración"""
     await update.message.reply_text(
@@ -641,8 +746,9 @@ async def mostrar_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+
 # ============================================================
-# FUNCIONES DE LANZAR CUESTIONARIO (FUERA de registrar_handlers)
+# LANZAR CUESTIONARIO
 # ============================================================
 
 async def iniciar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -676,6 +782,7 @@ async def iniciar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ESPERANDO_LANZAR_NOMBRE
 
+
 async def recibir_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 2: Recibir nombre del cuestionario"""
     nombre = update.message.text.strip()
@@ -699,6 +806,7 @@ async def recibir_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     return ESPERANDO_LANZAR_CANTIDAD
+
 
 async def recibir_cantidad_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 3: Recibir cantidad de preguntas"""
@@ -747,6 +855,7 @@ async def recibir_cantidad_lanzar(update: Update, context: ContextTypes.DEFAULT_
             parse_mode='Markdown'
         )
         return ESPERANDO_LANZAR_CANTIDAD
+
 
 async def manejar_seleccion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 4: Manejar la selección de preguntas"""
@@ -807,6 +916,7 @@ async def manejar_seleccion(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         return ESPERANDO_LANZAR_FILTRO
+
 
 async def recibir_fijas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 5a: Recibir selección de preguntas fijas"""
@@ -869,6 +979,7 @@ async def recibir_fijas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ESPERANDO_LANZAR_FIJAS
 
+
 async def recibir_filtro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 5b: Recibir filtro por tipo"""
     texto = update.message.text.strip()
@@ -930,6 +1041,7 @@ async def recibir_filtro(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ESPERANDO_LANZAR_FILTRO
 
+
 async def recibir_tiempo_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 6: Recibir tiempo global"""
     try:
@@ -960,6 +1072,7 @@ async def recibir_tiempo_lanzar(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode='Markdown'
         )
         return ESPERANDO_LANZAR_TIEMPO
+
 
 async def recibir_reintentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 7: Recibir reintentos"""
@@ -1003,6 +1116,7 @@ async def recibir_reintentos(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode='Markdown'
         )
         return ESPERANDO_LANZAR_REINTENTOS
+
 
 async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 8: Confirmar y guardar el cuestionario"""
@@ -1082,6 +1196,11 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mostrar_panel_admin(update, context)
         return ConversationHandler.END
 
+
+# ============================================================
+# GESTIONAR - EN DESARROLLO
+# ============================================================
+
 async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra el panel de gestión"""
     await update.message.reply_text(
@@ -1090,6 +1209,11 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+
+# ============================================================
+# RESPALDOS - EN DESARROLLO
+# ============================================================
+
 async def mostrar_respaldos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra los respaldos"""
     await update.message.reply_text(
@@ -1097,6 +1221,7 @@ async def mostrar_respaldos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Esta función está en desarrollo.",
         parse_mode='Markdown'
     )
+
 
 # ============================================================
 # REGISTRAR HANDLERS
@@ -1173,7 +1298,7 @@ def registrar_handlers(application, group=1):
         per_message=False,
     )
     
-    # Agregar los handlers
+    # Agregar los ConversationHandlers
     application.add_handler(crear_conv, group=group)
     application.add_handler(lanzar_conv, group=group)
     
@@ -1181,6 +1306,7 @@ def registrar_handlers(application, group=1):
     # HANDLERS SIMPLES (sin conversación)
     # ============================================================
     
+    # Subir CSV
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["csv"]}$'), 
@@ -1188,6 +1314,15 @@ def registrar_handlers(application, group=1):
         )
     )
     
+    # Handler para recibir archivos CSV
+    application.add_handler(
+        MessageHandler(
+            filters.Document.ALL, 
+            recibir_csv
+        )
+    )
+    
+    # Historial
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["historial"]}$'), 
@@ -1195,6 +1330,7 @@ def registrar_handlers(application, group=1):
         )
     )
     
+    # Configurar
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["configurar"]}$'), 
@@ -1202,6 +1338,7 @@ def registrar_handlers(application, group=1):
         )
     )
     
+    # Gestionar
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), 
@@ -1209,6 +1346,7 @@ def registrar_handlers(application, group=1):
         )
     )
     
+    # Respaldos
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["respaldos"]}$'), 
@@ -1223,6 +1361,7 @@ def registrar_handlers(application, group=1):
             recibir_limpieza_historial
         )
     )
+
 
 # ============================================================
 # EXPORTAR FUNCIONES (Clase AdminHandlers)
