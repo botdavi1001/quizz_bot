@@ -344,8 +344,8 @@ def configurar_bot() -> Application:
             if data.startswith('admin_hist_'):
                 await manejar_callback_historial(update, context)
             else:
-                # Si tienes manejar_callback_admin, impórtala y úsala
-                pass
+                from src.admin_handlers import admin_handlers
+                await admin_handlers.manejar_callback_admin(update, context)
         
         # Callbacks de usuario
         elif data.startswith('user_'):
