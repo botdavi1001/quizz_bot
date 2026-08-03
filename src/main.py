@@ -46,6 +46,16 @@ async def main():
     log_info("=" * 50)
     log_info(f"🕐 Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
+    # === ELIMINAR WEBHOOK PARA EVITAR CONFLICTOS ===
+    try:
+        from telegram import Bot
+        bot = Bot(token=config.TELEGRAM_TOKEN)
+        await bot.delete_webhook(drop_pending_updates=True)
+        log_info("✅ Webhook eliminado correctamente")
+        await asyncio.sleep(1)
+    except Exception as e:
+        log_error(f"⚠️ Error eliminando webhook: {str(e)}")
+    
     # Verificar Supabase
     try:
         db.client.table('admins').select('count', count='exact').execute()
