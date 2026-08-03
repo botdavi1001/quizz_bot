@@ -40,18 +40,11 @@ def iniciar_servidor():
 # FUNCIÓN PRINCIPAL
 # ============================================================
 
-async def ejecutar_bot():
-    """Función asíncrona que ejecuta el bot"""
-    
-    # === ELIMINAR WEBHOOK PARA EVITAR CONFLICTOS ===
-    try:
-        from telegram import Bot
-        bot = Bot(token=config.TELEGRAM_TOKEN)
-        await bot.delete_webhook(drop_pending_updates=True)
-        log_info("✅ Webhook eliminado correctamente")
-        await asyncio.sleep(1)
-    except Exception as e:
-        log_error(f"⚠️ Error eliminando webhook: {str(e)}")
+async def main():
+    log_info("=" * 50)
+    log_info("📱 BOT DE TELEGRAM - CUESTIONARIOS")
+    log_info("=" * 50)
+    log_info(f"🕐 Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Verificar Supabase
     try:
@@ -68,21 +61,31 @@ async def ejecutar_bot():
     except Exception as e:
         log_error(f"Error sincronizando respaldos: {str(e)}")
     
-    # Configurar y ejecutar el bot
-    application = configurar_bot()
-    log_info("✅ Bot configurado correctamente")
-    log_info("🤖 Bot iniciado. Esperando mensajes...")
-    
+    # Iniciar el bot
     try:
-        # Usar run_polling directamente
-        await application.run_polling(
+        application = configurar_bot()
+        log_info("✅ Bot configurado correctamente")
+        
+        # Iniciar polling
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(
             drop_pending_updates=True,
-            allowed_updates=['message', 'callback_query'],
-            stop_signals=None
+            allowed_updates=['message', 'callback_query']
         )
+        log_info("🤖 Bot iniciado. Esperando mensajes...")
+        
+        # Mantener vivo
+        while True:
+            await asyncio.sleep(3600)
+        
     except Exception as e:
-        log_error(f"❌ Error ejecutando el bot: {str(e)}")
+        log_error(f"❌ Error: {str(e)}")
         raise
+    finally:
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
 
 # ============================================================
 # PUNTO DE ENTRADA
@@ -94,11 +97,11 @@ if __name__ == '__main__':
     # Iniciar Flask en hilo
     threading.Thread(target=iniciar_servidor, daemon=True).start()
     
-    # Ejecutar el bot usando asyncio.run()
+    # Ejecutar bot
     try:
-        asyncio.run(ejecutar_bot())
+        asyncio.run(main())
     except KeyboardInterrupt:
-        log_info("🛑 Bot detenido por el usuario")
+        log_info("🛑 Bot detenido")
     except Exception as e:
         log_error(f"❌ Error fatal: {str(e)}")
         sys.exit(1)
