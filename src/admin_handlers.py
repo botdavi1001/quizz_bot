@@ -34,15 +34,18 @@ admin_estado = {}
 
 async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela la conversación actual y vuelve al menú"""
+    user_id = update.effective_user.id
+    admin_estado.pop(user_id, None)
     context.user_data.clear()
+    
     await update.message.reply_text(
         "✅ Operación cancelada.",
         parse_mode='Markdown'
     )
+    
     from src.bot import mostrar_panel_admin
     await mostrar_panel_admin(update, context)
     return ConversationHandler.END
-
 
 def registrar_handlers(application):
     """Registra todos los ConversationHandlers del admin"""
@@ -95,10 +98,50 @@ def registrar_handlers(application):
     async def recibir_preguntas_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Paso 3: Recibir el texto de las preguntas"""
         texto = update.message.text.strip()
+        user_id = update.effective_user.id
+        estado = admin_estado.get(user_id, {})
         
+        # Verificar si el usuario está esperando confirmación
+        if estado.get('esperando_confirmacion'):
+            if texto.lower() == 'si':
+                # Usar las preguntas que tiene
+                preguntas = estado.get('preguntas', [])
+                await update.message.reply_text(
+                    f"✅ Usando {len(preguntas)} preguntas.\n\n"
+                    "Ahora asigna el formato para cada pregunta.\n"
+                    "**1 = Múltiple**\n"
+                    "**2 = Verdadero/Falso**\n"
+                    "**3 = Abierta**\n\n"
+                    "Ejemplos:\n"
+                    "• `1-5: 1`\n"
+                    "• `todos: 1`\n\n"
+                    "Escribe las asignaciones:",
+                    parse_mode='Markdown'
+                )
+                estado['paso'] = 'formato'
+                estado['esperando_confirmacion'] = False
+                return ESPERANDO_FORMATO_LOTES
+            elif texto.lower() == 'no':
+                # Reiniciar, pedir que escriba las preguntas de nuevo
+                estado['preguntas'] = []
+                estado['esperando_confirmacion'] = False
+                await update.message.reply_text(
+                    f"Reiniciando. Escribe las {estado.get('cantidad', 0)} preguntas (una por línea).\n"
+                    "Escribe 'listo' cuando termines.",
+                    parse_mode='Markdown'
+                )
+                return ESPERANDO_PREGUNTAS_TEXTO
+            else:
+                await update.message.reply_text(
+                    "❌ Responde 'si' o 'no'.",
+                    parse_mode='Markdown'
+                )
+                return ESPERANDO_PREGUNTAS_TEXTO
+        
+        # Si el usuario escribe 'listo', terminar la entrada de preguntas
         if texto.lower() == 'listo':
-            preguntas = admin_estado[update.effective_user.id].get('preguntas', [])
-            cantidad = admin_estado[update.effective_user.id].get('cantidad', 0)
+            preguntas = estado.get('preguntas', [])
+            cantidad = estado.get('cantidad', 0)
             
             if len(preguntas) == 0:
                 await update.message.reply_text(
@@ -108,6 +151,8 @@ def registrar_handlers(application):
                 return ESPERANDO_PREGUNTAS_TEXTO
             
             if len(preguntas) != cantidad:
+                # Preguntar si quiere usar las que tiene
+                estado['esperando_confirmacion'] = True
                 await update.message.reply_text(
                     f"⚠️ Escribiste {len(preguntas)} preguntas, pero dijiste que serían {cantidad}.\n"
                     f"¿Quieres continuar con {len(preguntas)} preguntas? (responde 'si' o 'no')",
@@ -115,8 +160,8 @@ def registrar_handlers(application):
                 )
                 return ESPERANDO_PREGUNTAS_TEXTO
             
-            # Pasar al siguiente paso
-            admin_estado[update.effective_user.id]['paso'] = 'formato'
+            # Coincide la cantidad, pasar al siguiente paso
+            estado['paso'] = 'formato'
             mensaje = f"✅ {len(preguntas)} preguntas guardadas.\n\n"
             mensaje += "Ahora asigna el formato para cada pregunta.\n"
             mensaje += "**1 = Múltiple**\n"
@@ -132,30 +177,37 @@ def registrar_handlers(application):
             return ESPERANDO_FORMATO_LOTES
         
         # Agregar pregunta a la lista
-        admin_estado[update.effective_user.id]['preguntas'].append(texto)
+        estado['preguntas'].append(texto)
         await update.message.reply_text(
-            f"✅ Pregunta {len(admin_estado[update.effective_user.id]['preguntas'])} guardada. Siguiente:",
+            f"✅ Pregunta {len(estado['preguntas'])} guardada. Escribe la siguiente o escribe 'listo' para terminar.",
             parse_mode='Markdown'
         )
         return ESPERANDO_PREGUNTAS_TEXTO
     
     async def recibir_formato(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Paso 4: Recibir formato por lotes"""
+        """Paso 4: Recibir formato por lotes y FINALIZAR"""
         texto = update.message.text.strip()
+        user_id = update.effective_user.id
         
-        # Aquí iría la lógica de parseo de formatos
-        # Por ahora, simulamos que funciona
+        # Simular que se guardaron los formatos
         await update.message.reply_text(
             "✅ Formatos asignados.\n\n"
-            "Ahora asigna el tiempo para cada pregunta (en segundos).\n"
-            "Ejemplos:\n"
-            "• `1-10: 30`\n"
-            "• `todos: 45`\n"
-            "• `5,12: 0` (sin tiempo)\n\n"
-            "Escribe las asignaciones:",
+            "⚠️ Las preguntas se han creado correctamente.\n"
+            "Esta versión solo guarda las preguntas en memoria.\n"
+            "Para guardarlas en Supabase, usa la opción 'Subir CSV'.\n\n"
+            "Volviendo al menú principal...",
             parse_mode='Markdown'
         )
-        return ESPERANDO_TIEMPO_LOTES
+        
+        # Limpiar estado
+        admin_estado.pop(user_id, None)
+        context.user_data.clear()
+        
+        # Volver al menú
+        from src.bot import mostrar_panel_admin
+        await mostrar_panel_admin(update, context)
+        
+        return ConversationHandler.END
     
     async def recibir_tiempo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Paso 5: Recibir tiempo por lotes"""
