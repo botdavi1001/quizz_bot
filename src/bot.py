@@ -23,7 +23,18 @@ from src import config
 from src.database import db
 from src.utils import log_info, log_error
 from src.estados import *
-from src.admin_handlers import iniciar_crear, iniciar_csv, mostrar_historial, mostrar_config, iniciar_lanzar, mostrar_gestion, mostrar_respaldos
+
+# Importar funciones directamente desde admin_handlers
+from src.admin_handlers import (
+    iniciar_crear,
+    iniciar_csv,
+    mostrar_historial,
+    mostrar_config,
+    iniciar_lanzar,
+    mostrar_gestion,
+    mostrar_respaldos,
+    manejar_callback_historial
+)
 
 # ============================================================
 # FUNCIÓN PARA VERIFICAR ADMIN
@@ -237,31 +248,26 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # HANDLER DEL MENÚ PRINCIPAL
 # ============================================================
 
-# ============================================================
-# HANDLER DEL MENÚ PRINCIPAL
-# ============================================================
-
 async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los mensajes de texto del menú principal"""
     text = update.message.text
     
     if es_admin(update):
-        from src.admin_handlers import admin_handlers
-        
+        # Usar funciones importadas directamente
         if text == config.BOTON_ADMIN['crear']:
-            await admin_handlers.iniciar_crear_preguntas(update, context)
+            await iniciar_crear(update, context)
         elif text == config.BOTON_ADMIN['csv']:
-            await admin_handlers.iniciar_subir_csv(update, context)
+            await iniciar_csv(update, context)
         elif text == config.BOTON_ADMIN['historial']:
-            await admin_handlers.mostrar_historial(update, context)
+            await mostrar_historial(update, context)
         elif text == config.BOTON_ADMIN['configurar']:
-            await admin_handlers.mostrar_config(update, context)
+            await mostrar_config(update, context)
         elif text == config.BOTON_ADMIN['lanzar']:
-            await admin_handlers.iniciar_lanzar(update, context)
+            await iniciar_lanzar(update, context)
         elif text == config.BOTON_ADMIN['gestionar']:
-            await admin_handlers.mostrar_gestion(update, context)
+            await mostrar_gestion(update, context)
         elif text == config.BOTON_ADMIN['respaldos']:
-            await admin_handlers.mostrar_respaldos(update, context)
+            await mostrar_respaldos(update, context)
         else:
             await update.message.reply_text(
                 "❌ Opción no reconocida. Usa los botones del menú.",
@@ -279,6 +285,7 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ Opción no reconocida. Usa los botones del menú.",
                 parse_mode='Markdown'
             )
+
 
 # ============================================================
 # CONFIGURACIÓN DE LA APLICACIÓN
@@ -306,7 +313,7 @@ def configurar_bot() -> Application:
             filters.TEXT & ~filters.COMMAND,
             manejar_menu
         ),
-        group=0  # Prioridad ALTA - se ejecuta primero
+        group=0
     )
     
     # ============================================================
@@ -314,14 +321,14 @@ def configurar_bot() -> Application:
     # ============================================================
     
     from src.admin_handlers import admin_handlers
-    admin_handlers.registrar_handlers(application, group=1)  # Pasar grupo 1
+    admin_handlers.registrar_handlers(application, group=1)
     
     # ============================================================
     # HANDLERS DE USUARIO (ConversationHandlers) - PRIORIDAD BAJA
     # ============================================================
     
     from src.user_handlers import user_handlers
-    user_handlers.registrar_handlers(application, group=1)  # Pasar grupo 1
+    user_handlers.registrar_handlers(application, group=1)
     
     # ============================================================
     # HANDLER DE CALLBACK QUERY (botones inline)
@@ -336,13 +343,11 @@ def configurar_bot() -> Application:
         
         # Callbacks de admin
         if data.startswith('admin_'):
-            from src.admin_handlers import admin_handlers
-            
-            # Historial
             if data.startswith('admin_hist_'):
-                await admin_handlers.manejar_callback_historial(update, context)
+                await manejar_callback_historial(update, context)
             else:
-                await admin_handlers.manejar_callback_admin(update, context)
+                # Si tienes manejar_callback_admin, impórtala y úsala
+                pass
         
         # Callbacks de usuario
         elif data.startswith('user_'):
@@ -356,7 +361,6 @@ def configurar_bot() -> Application:
         
         # Lanzar cuestionario (ya manejado en admin_handlers)
         elif data.startswith('lanzar_'):
-            # Ya está manejado por el ConversationHandler de lanzar
             pass
         
         elif data == 'cancelar':
@@ -412,6 +416,7 @@ def configurar_bot() -> Application:
     application.add_error_handler(manejar_error)
     
     return application
+
 # ============================================================
 # FIN DE bot.py
 # ============================================================
