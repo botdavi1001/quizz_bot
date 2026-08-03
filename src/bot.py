@@ -377,8 +377,28 @@ def configurar_bot() -> Application:
     # ============================================================
     
     async def manejar_error(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Maneja errores del bot - SOLO para errores críticos"""
         error = context.error
-        log_error(f"Error en el bot: {str(error)}")
+        
+        # Ignorar errores de "Conflict" que son normales en polling
+        if "Conflict" in str(error):
+            log_info(f"ℹ️ Conflicto de polling normal: {str(error)}")
+            return
+        
+        # Ignorar errores de "Timed out"
+        if "Timed out" in str(error):
+            log_info(f"ℹ️ Timeout normal: {str(error)}")
+            return
+        
+        # Ignorar errores de "Network"
+        if "Network" in str(error):
+            log_info(f"ℹ️ Error de red normal: {str(error)}")
+            return
+        
+        # Loggear el error real
+        log_error(f"❌ Error crítico en el bot: {str(error)}")
+        import traceback
+        log_error(f"❌ Traceback: {traceback.format_exc()}")
         
         try:
             if update and update.effective_message:
