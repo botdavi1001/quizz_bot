@@ -306,98 +306,35 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def configurar_bot() -> Application:
     """Configura y retorna la aplicación del bot"""
     
-    # Crear aplicación
     application = Application.builder().token(config.TELEGRAM_TOKEN).build()
     
-    # ============================================================
-    # COMANDOS
-    # ============================================================
-    
+    # Comandos
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin_registro", admin_command))
     application.add_handler(CommandHandler("cancelar", cancelar))
     
-    # ============================================================
-    # HANDLERS DE ADMIN (ConversationHandlers)
-    # ============================================================
-    
+    # Handlers de admin (ConversationHandlers)
     from src.admin_handlers import admin_handlers
     admin_handlers.registrar_handlers(application)
     
-    # ============================================================
-    # HANDLERS DE USUARIO (ConversationHandlers)
-    # ============================================================
-    
+    # Handlers de usuario (ConversationHandlers)
     from src.user_handlers import user_handlers
     user_handlers.registrar_handlers(application)
     
     # ============================================================
-    # HANDLER DE MENÚ - CON PRIORIDAD MUY BAJA
+    # IMPORTANTE: NO AGREGAR MessageHandler adicional aquí
+    # Los ConversationHandlers ya capturan los mensajes
     # ============================================================
     
-    # Este handler se ejecuta SOLO si no hay conversación activa
-    # y tiene prioridad baja (grupo 3)
-    application.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND, 
-            manejar_menu
-        ),
-        group=3
-    )
-    
-    # ============================================================
-    # HANDLER DE CALLBACK QUERY (botones inline)
-    # ============================================================
-    
+    # Callback Query
     async def manejar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Maneja todas las respuestas de botones inline"""
         query = update.callback_query
         await query.answer()
-        
-        data = query.data
-        
-        if data.startswith('admin_'):
-            from src.admin_handlers import admin_handlers
-            await admin_handlers.manejar_callback_admin(update, context)
-        elif data.startswith('user_'):
-            from src.user_handlers import user_handlers
-            await user_handlers.manejar_callback_usuario(update, context)
-        elif data.startswith('resp_'):
-            from src.user_handlers import user_handlers
-            await user_handlers.manejar_respuesta(update, context)
-        elif data == 'cancelar':
-            await cancelar(update, context)
-        elif data == 'ver_correctas':
-            sesion = db.obtener_sesion_activa(update.effective_user.id)
-            if sesion:
-                from src.cuestionario import mostrar_respuestas_correctas
-                await mostrar_respuestas_correctas(update, context, sesion['id'])
-        else:
-            await query.edit_message_text("❌ Opción no reconocida.")
+        await query.edit_message_text("⚠️ Función en desarrollo.")
     
     application.add_handler(CallbackQueryHandler(manejar_callback))
     
-    # ============================================================
-    # HANDLER DE ERRORES
-    # ============================================================
-    
-    async def manejar_error(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        error = context.error
-        log_error(f"Error en el bot: {str(error)}")
-        
-        try:
-            if update and update.effective_message:
-                await update.effective_message.reply_text(
-                    "❌ Ocurrió un error. Intenta de nuevo más tarde.",
-                    parse_mode='Markdown'
-                )
-        except:
-            pass
-    
-    application.add_error_handler(manejar_error)
-    
     return application
-
 
 # ============================================================
 # FIN DE bot.py
