@@ -40,11 +40,37 @@ def iniciar_servidor():
 # FUNCIÓN PRINCIPAL
 # ============================================================
 
-async def main():
+def main():
+    """Función principal sincrónica que inicia todo"""
     log_info("=" * 50)
     log_info("📱 BOT DE TELEGRAM - CUESTIONARIOS")
     log_info("=" * 50)
     log_info(f"🕐 Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Iniciar Flask en un hilo separado
+    log_info(f"🌐 Iniciando servidor web en puerto {config.PORT}...")
+    import threading
+    servidor_thread = threading.Thread(target=iniciar_servidor, daemon=True)
+    servidor_thread.start()
+    log_info("✅ Servidor web iniciado")
+    
+    # Crear un nuevo event loop para el bot
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        # Ejecutar el bot
+        loop.run_until_complete(ejecutar_bot())
+    except KeyboardInterrupt:
+        log_info("🛑 Bot detenido por el usuario")
+    except Exception as e:
+        log_error(f"❌ Error fatal: {str(e)}")
+        sys.exit(1)
+    finally:
+        loop.close()
+
+async def ejecutar_bot():
+    """Función asíncrona que ejecuta el bot"""
     
     # === ELIMINAR WEBHOOK PARA EVITAR CONFLICTOS ===
     try:
@@ -72,18 +98,17 @@ async def main():
         log_error(f"Error sincronizando respaldos: {str(e)}")
     
     # Configurar y ejecutar el bot
+    application = configurar_bot()
+    log_info("✅ Bot configurado correctamente")
+    log_info("🤖 Bot iniciado. Esperando mensajes...")
+    
     try:
-        application = configurar_bot()
-        log_info("✅ Bot configurado correctamente")
-        log_info("🤖 Bot iniciado. Esperando mensajes...")
-        
-        # Usar run_polling directamente (NO usar initialize/start/updater.start_polling)
+        # Usar run_polling directamente
         await application.run_polling(
             drop_pending_updates=True,
             allowed_updates=['message', 'callback_query'],
             stop_signals=None
         )
-        
     except Exception as e:
         log_error(f"❌ Error ejecutando el bot: {str(e)}")
         raise
@@ -93,16 +118,4 @@ async def main():
 # ============================================================
 
 if __name__ == '__main__':
-    import threading
-    
-    # Iniciar Flask en hilo
-    threading.Thread(target=iniciar_servidor, daemon=True).start()
-    
-    # Ejecutar bot
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        log_info("🛑 Bot detenido")
-    except Exception as e:
-        log_error(f"❌ Error fatal: {str(e)}")
-        sys.exit(1)
+    main()
