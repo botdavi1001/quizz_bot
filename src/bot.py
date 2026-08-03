@@ -237,12 +237,12 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # HANDLER DEL MENÚ PRINCIPAL
 # ============================================================
 
+# ============================================================
+# HANDLER DEL MENÚ PRINCIPAL
+# ============================================================
+
 async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los mensajes de texto del menú principal"""
-    # Si hay una conversación activa, IGNORAR este handler
-    if esta_en_conversacion(context):
-        return
-    
     text = update.message.text
     
     if es_admin(update):
@@ -279,7 +279,6 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ Opción no reconocida. Usa los botones del menú.",
                 parse_mode='Markdown'
             )
-
 
 # ============================================================
 # CONFIGURACIÓN DE LA APLICACIÓN
