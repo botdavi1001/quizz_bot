@@ -49,8 +49,8 @@ async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TY
     return ConversationHandler.END
 
 
-def registrar_handlers(application):
-    """Registra todos los ConversationHandlers del admin"""
+def registrar_handlers(application, group=1):
+    """Registra todos los ConversationHandlers del admin con prioridad group"""
     
     # ============================================================
     # CONVERSACIÓN: CREAR PREGUNTAS
@@ -503,7 +503,6 @@ def registrar_handlers(application):
         per_message=False,
     )
     
-    application.add_handler(crear_conv)
     
     # ============================================================
     # SUBIR CSV - SIMPLIFICADO
@@ -1185,7 +1184,8 @@ def registrar_handlers(application):
         per_message=False,
     )
     
-    application.add_handler(lanzar_conv)
+    application.add_handler(crear_conv, group=group)
+    application.add_handler(lanzar_conv, group=group)
     
     # ============================================================
     # GESTIONAR - SIMPLIFICADO

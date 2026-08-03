@@ -42,8 +42,8 @@ user_estado = {}
 class UserHandlers:
     """Clase para manejar todos los handlers de usuario"""
     
-    def registrar_handlers(self, application):
-        """Registra todos los handlers de usuario"""
+    def registrar_handlers(self, application, group=1):
+        """Registra todos los handlers de usuario con prioridad group"""
         
         # ============================================================
         # CONVERSACIÓN: RESPUESTA ABIERTA
@@ -65,7 +65,7 @@ class UserHandlers:
             per_message=False,
         )
         
-        application.add_handler(respuesta_abierta_conv)
+        application.add_handler(respuesta_abierta_conv, group=group)
 
 user_handlers = UserHandlers()
 

@@ -299,21 +299,7 @@ def configurar_bot() -> Application:
     application.add_handler(CommandHandler("cancelar", cancelar))
     
     # ============================================================
-    # HANDLERS DE ADMIN (ConversationHandlers)
-    # ============================================================
-    
-    from src.admin_handlers import admin_handlers
-    admin_handlers.registrar_handlers(application)
-    
-    # ============================================================
-    # HANDLERS DE USUARIO (ConversationHandlers)
-    # ============================================================
-    
-    from src.user_handlers import user_handlers
-    user_handlers.registrar_handlers(application)
-    
-    # ============================================================
-    # HANDLER DE MENÚ - CON PRIORIDAD BAJA (group=2)
+    # HANDLER DE MENÚ - PRIORIDAD ALTA (group=0)
     # ============================================================
     
     application.add_handler(
@@ -321,8 +307,22 @@ def configurar_bot() -> Application:
             filters.TEXT & ~filters.COMMAND,
             manejar_menu
         ),
-        group=2  # Prioridad más baja que los ConversationHandlers (que son grupo 0)
+        group=0  # Prioridad ALTA - se ejecuta primero
     )
+    
+    # ============================================================
+    # HANDLERS DE ADMIN (ConversationHandlers) - PRIORIDAD BAJA
+    # ============================================================
+    
+    from src.admin_handlers import admin_handlers
+    admin_handlers.registrar_handlers(application, group=1)  # Pasar grupo 1
+    
+    # ============================================================
+    # HANDLERS DE USUARIO (ConversationHandlers) - PRIORIDAD BAJA
+    # ============================================================
+    
+    from src.user_handlers import user_handlers
+    user_handlers.registrar_handlers(application, group=1)  # Pasar grupo 1
     
     # ============================================================
     # HANDLER DE CALLBACK QUERY (botones inline)
@@ -393,7 +393,6 @@ def configurar_bot() -> Application:
     application.add_error_handler(manejar_error)
     
     return application
-
 # ============================================================
 # FIN DE bot.py
 # ============================================================
