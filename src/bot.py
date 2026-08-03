@@ -305,15 +305,15 @@ def configurar_bot() -> Application:
     application.add_handler(CommandHandler("cancelar", cancelar))
     
     # ============================================================
-    # HANDLER DE MENÚ - PRIORIDAD ALTA (group=0)
+    # HANDLER DE MENÚ - PRIORIDAD BAJA (group=2)
     # ============================================================
-    
+
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
             manejar_menu
         ),
-        group=0
+        group=2  # Prioridad BAJA - se ejecuta DESPUÉS de los ConversationHandlers
     )
     
     # ============================================================
