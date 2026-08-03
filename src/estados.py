@@ -39,4 +39,9 @@
     ESPERANDO_EDITAR_IMAGEN,
     ESPERANDO_EDITAR_VIDEO,
     ESPERANDO_EDITAR_ENLACE,
-) = range(35)
+    ESPERANDO_LANZAR_CONFIRMAR,   # <--- NUEVO ESTADO
+) = range(36)  # Cambiado de 35 a 36
+
+# ============================================================
+# FIN DE estados.py
+# ============================================================

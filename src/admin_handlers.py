@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import random
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
@@ -564,23 +565,517 @@ def registrar_handlers(application):
     )
     
     # ============================================================
-    # LANZAR CUESTIONARIO - SIMPLIFICADO
+    # LANZAR CUESTIONARIO
     # ============================================================
     
     async def iniciar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Inicia el lanzamiento del cuestionario"""
+        """Paso 1: Iniciar lanzamiento del cuestionario"""
+        user_id = update.effective_user.id
+        
+        # Verificar que haya preguntas
+        admin = db.obtener_admin(user_id)
+        if not admin:
+            await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
+            return ConversationHandler.END
+        
+        total_preguntas = db.contar_preguntas(admin['id'])
+        if total_preguntas == 0:
+            await update.message.reply_text(
+                "❌ No hay preguntas disponibles.\n"
+                "Crea preguntas primero.",
+                parse_mode='Markdown'
+            )
+            return ConversationHandler.END
+        
+        # Inicializar estado
+        admin_estado[user_id] = {
+            'admin_id': admin['id'],
+            'total_preguntas': total_preguntas
+        }
+        
         await update.message.reply_text(
             "🚀 **Lanzar cuestionario**\n\n"
-            "Esta función está en desarrollo.",
+            f"📝 Tienes {total_preguntas} preguntas disponibles.\n\n"
+            "Escribe el **nombre del cuestionario**:",
             parse_mode='Markdown'
         )
-    
-    application.add_handler(
-        MessageHandler(
-            filters.Regex(f'^{config.BOTON_ADMIN["lanzar"]}$'), 
-            iniciar_lanzar
+        return ESPERANDO_LANZAR_NOMBRE
+
+
+    async def recibir_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Paso 2: Recibir nombre del cuestionario"""
+        nombre = update.message.text.strip()
+        if not nombre:
+            await update.message.reply_text(
+                "❌ El nombre no puede estar vacío.\n"
+                "Escribe el nombre del cuestionario:",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_NOMBRE
+        
+        user_id = update.effective_user.id
+        admin_estado[user_id]['nombre'] = nombre
+        
+        total_preguntas = admin_estado[user_id].get('total_preguntas', 0)
+        max_preguntas = min(total_preguntas, config.MAX_PREGUNTAS_MOSTRAR)
+        
+        await update.message.reply_text(
+            f"✅ Nombre: **{nombre}**\n\n"
+            f"📊 ¿Cuántas preguntas quieres mostrar? (máximo {max_preguntas})",
+            parse_mode='Markdown'
         )
+        return ESPERANDO_LANZAR_CANTIDAD
+
+
+    async def recibir_cantidad_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Paso 3: Recibir cantidad de preguntas"""
+        try:
+            cantidad = int(update.message.text.strip())
+            total_preguntas = admin_estado[update.effective_user.id].get('total_preguntas', 0)
+            max_preguntas = min(total_preguntas, config.MAX_PREGUNTAS_MOSTRAR)
+            
+            if cantidad < 1:
+                await update.message.reply_text(
+                    "❌ Debes mostrar al menos 1 pregunta.\n"
+                    f"Escribe un número entre 1 y {max_preguntas}:",
+                    parse_mode='Markdown'
+                )
+                return ESPERANDO_LANZAR_CANTIDAD
+            
+            if cantidad > max_preguntas:
+                await update.message.reply_text(
+                    f"❌ Solo tienes {total_preguntas} preguntas disponibles.\n"
+                    f"Escribe un número entre 1 y {max_preguntas}:",
+                    parse_mode='Markdown'
+                )
+                return ESPERANDO_LANZAR_CANTIDAD
+            
+            user_id = update.effective_user.id
+            admin_estado[user_id]['cantidad'] = cantidad
+            
+            # Mostrar opciones de selección
+            keyboard = [
+                [InlineKeyboardButton("📌 Fijas", callback_data="lanzar_fijas")],
+                [InlineKeyboardButton("🎲 Al azar", callback_data="lanzar_azar")],
+                [InlineKeyboardButton("🔍 Filtrar por tipo", callback_data="lanzar_filtro")],
+                [InlineKeyboardButton("❌ Cancelar", callback_data="lanzar_cancelar")]
+            ]
+            
+            await update.message.reply_text(
+                f"✅ Cantidad: {cantidad} preguntas\n\n"
+                "**¿Cómo quieres seleccionar las preguntas?**",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_SELECCION
+            
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Escribe un número válido.",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_CANTIDAD
+
+
+    async def manejar_seleccion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Paso 4: Manejar la selección de preguntas"""
+        query = update.callback_query
+        await query.answer()
+        data = query.data
+        user_id = update.effective_user.id
+        
+        if data == 'lanzar_cancelar':
+            admin_estado.pop(user_id, None)
+            await query.edit_message_text("✅ Lanzamiento cancelado.")
+            from src.bot import mostrar_panel_admin
+            await mostrar_panel_admin(update, context)
+            return ConversationHandler.END
+        
+        admin_estado[user_id]['seleccion_tipo'] = data.replace('lanzar_', '')
+        
+        if data == 'lanzar_fijas':
+            # Mostrar lista de preguntas para seleccionar
+            admin = db.obtener_admin(user_id)
+            preguntas = db.obtener_preguntas(admin['id'])
+            admin_estado[user_id]['preguntas_lista'] = preguntas
+            
+            mensaje = "📌 **Seleccionar preguntas fijas**\n\n"
+            mensaje += "Escribe los números de las preguntas que quieres incluir.\n\n"
+            mensaje += "**Ejemplos:**\n"
+            mensaje += "• `1,3,5,7` (preguntas individuales)\n"
+            mensaje += "• `1-10` (rango)\n"
+            mensaje += "• `1-5,10,15-20` (combinación)\n\n"
+            mensaje += "**Lista de preguntas disponibles:**\n"
+            
+            for i, p in enumerate(preguntas[:20], 1):
+                texto = p.get('texto', '')[:50]
+                mensaje += f"{i}. {texto}...\n"
+            
+            if len(preguntas) > 20:
+                mensaje += f"\n... y {len(preguntas) - 20} más."
+            
+            await query.edit_message_text(mensaje, parse_mode='Markdown')
+            return ESPERANDO_LANZAR_FIJAS
+        
+        elif data == 'lanzar_azar':
+            # Selección al azar, pasar al siguiente paso
+            admin_estado[user_id]['seleccion_detalle'] = 'azar'
+            await query.edit_message_text(
+                "✅ Selección al azar.\n\n"
+                "Ahora configura el **tiempo global** para cada pregunta (en segundos).\n"
+                "Escribe `0` para usar el tiempo individual de cada pregunta.",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_TIEMPO
+        
+        elif data == 'lanzar_filtro':
+            # Filtrar por tipo
+            await query.edit_message_text(
+                "🔍 **Filtrar por tipo**\n\n"
+                "Escribe la cantidad por tipo en este formato:\n"
+                "`30:multiple, 20:vf, 50:abierta`\n\n"
+                "Ejemplo: `10:multiple, 5:vf, 5:abierta`\n"
+                "(total = cantidad de preguntas a mostrar)",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_FILTRO
+
+
+    async def recibir_fijas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Paso 5a: Recibir selección de preguntas fijas"""
+        texto = update.message.text.strip()
+        user_id = update.effective_user.id
+        estado = admin_estado.get(user_id, {})
+        preguntas_lista = estado.get('preguntas_lista', [])
+        cantidad = estado.get('cantidad', 0)
+        
+        try:
+            # Parsear selección
+            seleccionados = set()
+            partes = texto.split(',')
+            
+            for parte in partes:
+                parte = parte.strip()
+                if '-' in parte:
+                    inicio, fin = parte.split('-')
+                    for i in range(int(inicio), int(fin) + 1):
+                        if 1 <= i <= len(preguntas_lista):
+                            seleccionados.add(i - 1)
+                else:
+                    num = int(parte)
+                    if 1 <= num <= len(preguntas_lista):
+                        seleccionados.add(num - 1)
+            
+            if len(seleccionados) == 0:
+                await update.message.reply_text(
+                    "❌ No seleccionaste ninguna pregunta válida.\n"
+                    "Intenta de nuevo:",
+                    parse_mode='Markdown'
+                )
+                return ESPERANDO_LANZAR_FIJAS
+            
+            if len(seleccionados) != cantidad:
+                await update.message.reply_text(
+                    f"⚠️ Seleccionaste {len(seleccionados)} preguntas, pero dijiste que serían {cantidad}.\n"
+                    f"¿Quieres continuar con {len(seleccionados)} preguntas? (responde 'si' o 'no')",
+                    parse_mode='Markdown'
+                )
+                # Guardar selección para confirmación
+                estado['seleccion_temp'] = list(seleccionados)
+                estado['esperando_confirmacion_seleccion'] = True
+                return ESPERANDO_LANZAR_FIJAS
+            
+            # Guardar IDs seleccionados
+            ids_seleccionados = [preguntas_lista[i]['id'] for i in seleccionados]
+            estado['preguntas_ids'] = ids_seleccionados
+            estado['seleccion_detalle'] = 'fijas'
+            
+            await update.message.reply_text(
+                f"✅ {len(ids_seleccionados)} preguntas seleccionadas.\n\n"
+                "Ahora configura el **tiempo global** para cada pregunta (en segundos).\n"
+                "Escribe `0` para usar el tiempo individual de cada pregunta.",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_TIEMPO
+            
+        except Exception as e:
+            await update.message.reply_text(
+                f"❌ Error: {str(e)}\nIntenta de nuevo:",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_FIJAS
+
+
+    async def recibir_filtro(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Paso 5b: Recibir filtro por tipo"""
+        texto = update.message.text.strip()
+        user_id = update.effective_user.id
+        estado = admin_estado.get(user_id, {})
+        cantidad = estado.get('cantidad', 0)
+        
+        try:
+            # Parsear filtro
+            filtros = {}
+            total_filtro = 0
+            partes = texto.split(',')
+            
+            for parte in partes:
+                parte = parte.strip()
+                if ':' in parte:
+                    num, tipo = parte.split(':')
+                    num = int(num.strip())
+                    tipo = tipo.strip().lower()
+                    if tipo in ['multiple', 'vf', 'abierta']:
+                        filtros[tipo] = num
+                        total_filtro += num
+            
+            if not filtros:
+                await update.message.reply_text(
+                    "❌ Formato inválido. Usa el formato: `30:multiple, 20:vf, 50:abierta`\n"
+                    "Intenta de nuevo:",
+                    parse_mode='Markdown'
+                )
+                return ESPERANDO_LANZAR_FILTRO
+            
+            if total_filtro != cantidad:
+                await update.message.reply_text(
+                    f"⚠️ La suma de los filtros es {total_filtro}, pero dijiste que serían {cantidad}.\n"
+                    f"¿Quieres continuar con {total_filtro} preguntas? (responde 'si' o 'no')",
+                    parse_mode='Markdown'
+                )
+                estado['filtro_temp'] = filtros
+                estado['esperando_confirmacion_filtro'] = True
+                return ESPERANDO_LANZAR_FILTRO
+            
+            # Guardar filtro
+            estado['filtros'] = filtros
+            estado['seleccion_detalle'] = filtros
+            
+            await update.message.reply_text(
+                f"✅ Filtros guardados:\n"
+                f"• Múltiple: {filtros.get('multiple', 0)}\n"
+                f"• V/F: {filtros.get('vf', 0)}\n"
+                f"• Abierta: {filtros.get('abierta', 0)}\n\n"
+                "Ahora configura el **tiempo global** para cada pregunta (en segundos).\n"
+                "Escribe `0` para usar el tiempo individual de cada pregunta.",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_TIEMPO
+            
+        except Exception as e:
+            await update.message.reply_text(
+                f"❌ Error: {str(e)}\nIntenta de nuevo:",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_FILTRO
+
+
+    async def recibir_tiempo_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Paso 6: Recibir tiempo global"""
+        try:
+            tiempo = int(update.message.text.strip())
+            if tiempo < 0:
+                await update.message.reply_text(
+                    "❌ El tiempo no puede ser negativo.\n"
+                    "Escribe `0` para usar tiempos individuales o un número positivo:",
+                    parse_mode='Markdown'
+                )
+                return ESPERANDO_LANZAR_TIEMPO
+            
+            user_id = update.effective_user.id
+            admin_estado[user_id]['tiempo_global'] = tiempo
+            
+            await update.message.reply_text(
+                f"✅ Tiempo global: {'Sin límite' if tiempo == 0 else f'{tiempo} segundos'}\n\n"
+                "**Último paso:**\n"
+                "¿Cuántos **reintentos** quieres permitir por usuario?\n"
+                "Escribe un número (0 = sin límite):",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_REINTENTOS
+            
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Escribe un número válido.",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_TIEMPO
+
+
+    async def recibir_reintentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Paso 7: Recibir reintentos"""
+        try:
+            reintentos = int(update.message.text.strip())
+            if reintentos < 0:
+                await update.message.reply_text(
+                    "❌ El número de reintentos no puede ser negativo.\n"
+                    "Escribe un número (0 = sin límite):",
+                    parse_mode='Markdown'
+                )
+                return ESPERANDO_LANZAR_REINTENTOS
+            
+            user_id = update.effective_user.id
+            estado = admin_estado[user_id]
+            estado['reintentos'] = reintentos
+            
+            # Mostrar resumen
+            mensaje = "📋 **Resumen del cuestionario**\n\n"
+            mensaje += f"📌 Nombre: {estado.get('nombre', 'Sin nombre')}\n"
+            mensaje += f"📊 Preguntas: {estado.get('cantidad', 0)}\n"
+            mensaje += f"🎲 Selección: {estado.get('seleccion_tipo', 'N/A')}\n"
+            mensaje += f"⏱️ Tiempo global: {'Sin límite' if estado.get('tiempo_global', 0) == 0 else f'{estado.get('tiempo_global', 0)}s'}\n"
+            mensaje += f"🔄 Reintentos: {'Sin límite' if reintentos == 0 else reintentos}\n\n"
+            mensaje += "¿Guardar y lanzar el cuestionario?"
+            
+            keyboard = [
+                [InlineKeyboardButton("✅ Sí, lanzar", callback_data="lanzar_confirmar")],
+                [InlineKeyboardButton("❌ Cancelar", callback_data="lanzar_cancelar_final")]
+            ]
+            
+            await update.message.reply_text(
+                mensaje,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_CONFIRMAR
+            
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Escribe un número válido.",
+                parse_mode='Markdown'
+            )
+            return ESPERANDO_LANZAR_REINTENTOS
+
+
+    async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Paso 8: Confirmar y guardar el cuestionario"""
+        query = update.callback_query
+        await query.answer()
+        data = query.data
+        user_id = update.effective_user.id
+        
+        if data == 'lanzar_cancelar_final':
+            admin_estado.pop(user_id, None)
+            await query.edit_message_text("✅ Lanzamiento cancelado.")
+            from src.bot import mostrar_panel_admin
+            await mostrar_panel_admin(update, context)
+            return ConversationHandler.END
+        
+        if data == 'lanzar_confirmar':
+            estado = admin_estado.get(user_id, {})
+            admin = db.obtener_admin(user_id)
+            
+            if not admin:
+                await query.edit_message_text("❌ No eres admin.")
+                return ConversationHandler.END
+            
+            # Obtener IDs de preguntas seleccionadas
+            preguntas_ids = estado.get('preguntas_ids', [])
+            seleccion_tipo = estado.get('seleccion_tipo', 'azar')
+            
+            # Si no hay IDs seleccionados (caso azar o filtro), seleccionar automáticamente
+            if not preguntas_ids:
+                todas_preguntas = db.obtener_preguntas(admin['id'])
+                cantidad = estado.get('cantidad', 0)
+                
+                if seleccion_tipo == 'azar':
+                    # Seleccionar al azar
+                    seleccionadas = random.sample(todas_preguntas, min(cantidad, len(todas_preguntas)))
+                    preguntas_ids = [p['id'] for p in seleccionadas]
+                
+                elif seleccion_tipo == 'filtro':
+                    # Seleccionar por filtro
+                    filtros = estado.get('filtros', {})
+                    seleccionadas = []
+                    
+                    for tipo, cantidad_tipo in filtros.items():
+                        disponibles = [p for p in todas_preguntas if p.get('tipo') == tipo]
+                        if disponibles:
+                            elegidas = random.sample(disponibles, min(cantidad_tipo, len(disponibles)))
+                            seleccionadas.extend(elegidas)
+                    
+                    # Si faltan preguntas, completar con aleatorias
+                    if len(seleccionadas) < cantidad:
+                        restantes = [p for p in todas_preguntas if p not in seleccionadas]
+                        faltantes = cantidad - len(seleccionadas)
+                        if restantes:
+                            seleccionadas.extend(random.sample(restantes, min(faltantes, len(restantes))))
+                    
+                    preguntas_ids = [p['id'] for p in seleccionadas]
+            
+            # Guardar en Supabase
+            cuestionario_id = db.crear_cuestionario(
+                admin_id=admin['id'],
+                nombre=estado.get('nombre', 'Sin nombre'),
+                preguntas_ids=preguntas_ids,
+                seleccion_tipo=seleccion_tipo,
+                reintentos=estado.get('reintentos', config.REINTENTOS_DEFAULT)
+            )
+            
+            if cuestionario_id:
+                mensaje = f"✅ **¡Cuestionario lanzado exitosamente!**\n\n"
+                mensaje += f"📌 Nombre: {estado.get('nombre')}\n"
+                mensaje += f"📊 Preguntas: {len(preguntas_ids)}\n"
+                mensaje += f"🔄 Reintentos: {estado.get('reintentos', 0)}\n\n"
+                mensaje += "Los usuarios ya pueden responder desde el panel de usuario."
+                
+                await query.edit_message_text(mensaje, parse_mode='Markdown')
+            else:
+                await query.edit_message_text(
+                    "❌ Error al guardar el cuestionario. Intenta de nuevo.",
+                    parse_mode='Markdown'
+                )
+            
+            # Limpiar estado
+            admin_estado.pop(user_id, None)
+            from src.bot import mostrar_panel_admin
+            await mostrar_panel_admin(update, context)
+            return ConversationHandler.END
+
+
+    # ============================================================
+    # CONVERSACIÓN: LANZAR CUESTIONARIO
+    # ============================================================
+    
+    lanzar_conv = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["lanzar"]}$'), iniciar_lanzar)
+        ],
+        states={
+            ESPERANDO_LANZAR_NOMBRE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_nombre)
+            ],
+            ESPERANDO_LANZAR_CANTIDAD: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_cantidad_lanzar)
+            ],
+            ESPERANDO_LANZAR_SELECCION: [
+                CallbackQueryHandler(manejar_seleccion, pattern="^lanzar_")
+            ],
+            ESPERANDO_LANZAR_FIJAS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_fijas)
+            ],
+            ESPERANDO_LANZAR_FILTRO: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_filtro)
+            ],
+            ESPERANDO_LANZAR_TIEMPO: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_tiempo_lanzar)
+            ],
+            ESPERANDO_LANZAR_REINTENTOS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_reintentos)
+            ],
+            ESPERANDO_LANZAR_CONFIRMAR: [
+                CallbackQueryHandler(confirmar_lanzar, pattern="^lanzar_confirmar$"),
+                CallbackQueryHandler(confirmar_lanzar, pattern="^lanzar_cancelar_final$")
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancelar", cancelar_conversacion)
+        ],
+        allow_reentry=True,
+        per_message=False,
     )
+    
+    application.add_handler(lanzar_conv)
     
     # ============================================================
     # GESTIONAR - SIMPLIFICADO
