@@ -1128,54 +1128,53 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
     user_id = update.effective_user.id
-    
+
     if data == 'lanzar_cancelar_final':
         admin_estado.pop(user_id, None)
         context.user_data.pop('conversation_state', None)
         await query.edit_message_text("✅ Lanzamiento cancelado.")
-        from src.bot import mostrar_panel_admin
-        # Crear un nuevo mensaje desde el chat de la query
-        await mostrar_panel_admin(update, context)
+        # Enviar panel manualmente
+        await enviar_panel_admin(update, context)
         return ConversationHandler.END
-    
+
     if data == 'lanzar_confirmar':
         try:
             estado = admin_estado.get(user_id, {})
             admin = db.obtener_admin(user_id)
-            
+
             if not admin:
                 await query.edit_message_text("❌ No eres admin.")
                 return ConversationHandler.END
-            
+
             preguntas_ids = estado.get('preguntas_ids', [])
             seleccion_tipo = estado.get('seleccion_tipo', 'azar')
-            
+
             if not preguntas_ids:
                 todas_preguntas = db.obtener_preguntas(admin['id'])
                 cantidad = estado.get('cantidad', 0)
-                
+
                 if seleccion_tipo == 'azar':
                     seleccionadas = random.sample(todas_preguntas, min(cantidad, len(todas_preguntas)))
                     preguntas_ids = [p['id'] for p in seleccionadas]
-                
+
                 elif seleccion_tipo == 'filtro':
                     filtros = estado.get('filtros', {})
                     seleccionadas = []
-                    
+
                     for tipo, cantidad_tipo in filtros.items():
                         disponibles = [p for p in todas_preguntas if p.get('tipo') == tipo]
                         if disponibles:
                             elegidas = random.sample(disponibles, min(cantidad_tipo, len(disponibles)))
                             seleccionadas.extend(elegidas)
-                    
+
                     if len(seleccionadas) < cantidad:
                         restantes = [p for p in todas_preguntas if p not in seleccionadas]
                         faltantes = cantidad - len(seleccionadas)
                         if restantes:
                             seleccionadas.extend(random.sample(restantes, min(faltantes, len(restantes))))
-                    
+
                     preguntas_ids = [p['id'] for p in seleccionadas]
-            
+
             cuestionario_id = db.crear_cuestionario(
                 admin_id=admin['id'],
                 nombre=estado.get('nombre', 'Sin nombre'),
@@ -1183,32 +1182,30 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 seleccion_tipo=seleccion_tipo,
                 reintentos=estado.get('reintentos', config.REINTENTOS_DEFAULT)
             )
-            
+
             # Limpiar estado
             admin_estado.pop(user_id, None)
             context.user_data.pop('conversation_state', None)
-            
+
             if cuestionario_id:
                 mensaje = f"✅ **¡Cuestionario lanzado exitosamente!**\n\n"
                 mensaje += f"📌 Nombre: {estado.get('nombre')}\n"
                 mensaje += f"📊 Preguntas: {len(preguntas_ids)}\n"
                 mensaje += f"🔄 Reintentos: {estado.get('reintentos', 0)}\n\n"
                 mensaje += "Los usuarios ya pueden responder desde el panel de usuario."
-                
+
                 await query.edit_message_text(mensaje, parse_mode='Markdown')
-                
-                # Enviar el panel de admin como mensaje nuevo desde el chat
-                from src.bot import mostrar_panel_admin
-                # Usar el chat_id de la query para enviar el panel
-                await mostrar_panel_admin(update, context)
+
+                # Enviar panel manualmente (sin llamar a mostrar_panel_admin)
+                await enviar_panel_admin(update, context)
+
             else:
                 await query.edit_message_text(
                     "❌ Error al guardar el cuestionario. Intenta de nuevo.",
                     parse_mode='Markdown'
                 )
-                from src.bot import mostrar_panel_admin
-                await mostrar_panel_admin(update, context)
-            
+                await enviar_panel_admin(update, context)
+
         except Exception as e:
             log_error(f"❌ Error en confirmar_lanzar: {str(e)}")
             import traceback
@@ -1219,10 +1216,36 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             admin_estado.pop(user_id, None)
             context.user_data.pop('conversation_state', None)
-            from src.bot import mostrar_panel_admin
-            await mostrar_panel_admin(update, context)
-        
+            await enviar_panel_admin(update, context)
+
         return ConversationHandler.END
+
+# Nueva función auxiliar para enviar el panel de admin sin usar mostrar_panel_admin
+async def enviar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Envía el panel de administrador manualmente"""
+    user_id = update.effective_user.id
+    admin = db.obtener_admin(user_id)
+    total_preguntas = db.contar_preguntas(admin['id']) if admin else 0
+    cuestionario = db.obtener_cuestionario_activo()
+    cuestionario_nombre = cuestionario.get('nombre', 'Sin nombre') if cuestionario else 'Ninguno activo'
+
+    keyboard = [
+        [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
+        [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
+        [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
+        [config.BOTON_ADMIN['respaldos']]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+    mensaje = f"👑 **Panel de Administrador**\n\n"
+    mensaje += f"📝 Total de preguntas: {total_preguntas}\n"
+    mensaje += f"🚀 Cuestionario activo: {cuestionario_nombre}\n"
+
+    # Usar query.message para enviar si existe, o update.message
+    if update.callback_query:
+        await update.callback_query.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
 # ============================================================
 # GESTIONAR - EN DESARROLLO
 # ============================================================
