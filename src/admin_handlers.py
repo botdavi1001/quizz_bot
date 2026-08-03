@@ -534,11 +534,15 @@ def registrar_handlers(application, group=1):
         user_id = update.effective_user.id
         
         try:
+            log_info(f"📊 Historial: Iniciando para usuario {user_id}")
+            
             admin = db.obtener_admin(user_id)
             
             if not admin:
                 await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
                 return
+            
+            log_info(f"📊 Historial: Admin encontrado: {admin.get('id')}")
             
             from src.historial_manager import (
                 verificar_limite_historial,
@@ -547,6 +551,8 @@ def registrar_handlers(application, group=1):
             
             supera, total, mensaje_limite = verificar_limite_historial()
             _, porcentaje, mensaje_almacenamiento = verificar_almacenamiento()
+            
+            log_info(f"📊 Historial: Límites verificados - Total: {total}")
             
             keyboard = [
                 [InlineKeyboardButton("📈 Resumen general", callback_data="admin_hist_resumido")],
@@ -569,13 +575,15 @@ def registrar_handlers(application, group=1):
                 parse_mode='Markdown'
             )
             
+            log_info(f"📊 Historial: Menú mostrado correctamente")
+            
         except Exception as e:
-            log_error(f"Error en mostrar_historial: {str(e)}")
+            log_error(f"❌ Error en mostrar_historial: {str(e)}")
             import traceback
-            log_error(traceback.format_exc())
+            log_error(f"❌ Traceback: {traceback.format_exc()}")
             
             await update.message.reply_text(
-                f"❌ Error al cargar historial: {str(e)}\n\n"
+                f"❌ Error al cargar historial: {str(e)[:100]}\n\n"
                 "Revisa los logs de Render para más detalles.",
                 parse_mode='Markdown'
             )
@@ -590,6 +598,8 @@ def registrar_handlers(application, group=1):
         user_id = update.effective_user.id
         
         try:
+            log_info(f"📊 Callback historial: {data} - Usuario {user_id}")
+            
             admin = db.obtener_admin(user_id)
             
             if not admin:
@@ -599,6 +609,7 @@ def registrar_handlers(application, group=1):
             from src.historial_manager import obtener_historial_para_reporte
             
             tipo = data.replace('admin_hist_', '')
+            log_info(f"📊 Generando reporte tipo: {tipo}")
             
             if tipo == 'cerrar':
                 await query.edit_message_text("✅ Historial cerrado.")
@@ -617,16 +628,27 @@ def registrar_handlers(application, group=1):
                 return
             
             # Generar reporte
+            log_info(f"📊 Llamando a obtener_historial_para_reporte con admin_id: {admin['id']}, tipo: {tipo}")
             _, mensaje = obtener_historial_para_reporte(admin['id'], tipo)
-            await query.edit_message_text(mensaje, parse_mode='Markdown')
+            log_info(f"📊 Reporte generado, longitud: {len(mensaje)}")
+            
+            # Si el mensaje está vacío, mostrar mensaje por defecto
+            if not mensaje or mensaje == "📊 No hay datos en el historial.":
+                await query.edit_message_text(
+                    "📊 **Sin datos**\n\n"
+                    "No hay sesiones registradas en el historial.",
+                    parse_mode='Markdown'
+                )
+            else:
+                await query.edit_message_text(mensaje, parse_mode='Markdown')
             
         except Exception as e:
-            log_error(f"Error en manejar_callback_historial: {str(e)}")
+            log_error(f"❌ Error en manejar_callback_historial: {str(e)}")
             import traceback
-            log_error(traceback.format_exc())
+            log_error(f"❌ Traceback: {traceback.format_exc()}")
             
             await query.edit_message_text(
-                f"❌ Error al generar reporte: {str(e)}\n\n"
+                f"❌ Error al generar reporte: {str(e)[:100]}\n\n"
                 "Revisa los logs de Render para más detalles.",
                 parse_mode='Markdown'
             )
