@@ -1134,6 +1134,7 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('conversation_state', None)
         await query.edit_message_text("✅ Lanzamiento cancelado.")
         from src.bot import mostrar_panel_admin
+        # Crear un nuevo mensaje desde el chat de la query
         await mostrar_panel_admin(update, context)
         return ConversationHandler.END
     
@@ -1183,7 +1184,7 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reintentos=estado.get('reintentos', config.REINTENTOS_DEFAULT)
             )
             
-            # Limpiar estado ANTES de mostrar el mensaje
+            # Limpiar estado
             admin_estado.pop(user_id, None)
             context.user_data.pop('conversation_state', None)
             
@@ -1195,15 +1196,18 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mensaje += "Los usuarios ya pueden responder desde el panel de usuario."
                 
                 await query.edit_message_text(mensaje, parse_mode='Markdown')
+                
+                # Enviar el panel de admin como mensaje nuevo desde el chat
+                from src.bot import mostrar_panel_admin
+                # Usar el chat_id de la query para enviar el panel
+                await mostrar_panel_admin(update, context)
             else:
                 await query.edit_message_text(
                     "❌ Error al guardar el cuestionario. Intenta de nuevo.",
                     parse_mode='Markdown'
                 )
-            
-            # Volver al menú
-            from src.bot import mostrar_panel_admin
-            await mostrar_panel_admin(update, context)
+                from src.bot import mostrar_panel_admin
+                await mostrar_panel_admin(update, context)
             
         except Exception as e:
             log_error(f"❌ Error en confirmar_lanzar: {str(e)}")
@@ -1215,9 +1219,10 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             admin_estado.pop(user_id, None)
             context.user_data.pop('conversation_state', None)
+            from src.bot import mostrar_panel_admin
+            await mostrar_panel_admin(update, context)
         
         return ConversationHandler.END
-
 # ============================================================
 # GESTIONAR - EN DESARROLLO
 # ============================================================
