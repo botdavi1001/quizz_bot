@@ -23,7 +23,7 @@ from src import config
 from src.database import db
 from src.utils import log_info, log_error
 from src.estados import *
-
+from src.admin_handlers import iniciar_crear, iniciar_csv, mostrar_historial, mostrar_config, iniciar_lanzar, mostrar_gestion, mostrar_respaldos
 
 # ============================================================
 # FUNCIÓN PARA VERIFICAR ADMIN
@@ -255,7 +255,7 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text == config.BOTON_ADMIN['historial']:
             await admin_handlers.mostrar_historial(update, context)
         elif text == config.BOTON_ADMIN['configurar']:
-            await admin_handlers.mostrar_configuracion(update, context)
+            await admin_handlers.mostrar_config(update, context)
         elif text == config.BOTON_ADMIN['lanzar']:
             await admin_handlers.iniciar_lanzar(update, context)
         elif text == config.BOTON_ADMIN['gestionar']:
