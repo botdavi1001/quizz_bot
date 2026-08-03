@@ -71,30 +71,22 @@ async def main():
     except Exception as e:
         log_error(f"Error sincronizando respaldos: {str(e)}")
     
-    # Iniciar el bot
+    # Configurar y ejecutar el bot
     try:
         application = configurar_bot()
         log_info("✅ Bot configurado correctamente")
-        
-        # Iniciar polling
-        await application.initialize()
-        await application.start()
-        await application.updater.start_polling(
-            drop_pending_updates=True,
-            allowed_updates=['message', 'callback_query']
-        )
         log_info("🤖 Bot iniciado. Esperando mensajes...")
         
-        # Mantener vivo
-        await asyncio.Event().wait()
+        # Usar run_polling directamente (NO usar initialize/start/updater.start_polling)
+        await application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=['message', 'callback_query'],
+            stop_signals=None
+        )
         
     except Exception as e:
-        log_error(f"❌ Error: {str(e)}")
+        log_error(f"❌ Error ejecutando el bot: {str(e)}")
         raise
-    finally:
-        await application.updater.stop()
-        await application.stop()
-        await application.shutdown()
 
 # ============================================================
 # PUNTO DE ENTRADA
