@@ -29,6 +29,35 @@ from src.estados import *
 
 admin_estado = {}
 
+# ============================================================
+# FUNCIÓN AUXILIAR PARA ENVIAR PANEL DE ADMIN
+# ============================================================
+
+async def enviar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Envía el panel de administrador manualmente (sin usar mostrar_panel_admin)"""
+    user_id = update.effective_user.id
+    admin = db.obtener_admin(user_id)
+    total_preguntas = db.contar_preguntas(admin['id']) if admin else 0
+    cuestionario = db.obtener_cuestionario_activo()
+    cuestionario_nombre = cuestionario.get('nombre', 'Sin nombre') if cuestionario else 'Ninguno activo'
+
+    keyboard = [
+        [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
+        [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
+        [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
+        [config.BOTON_ADMIN['respaldos']]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+    mensaje = f"👑 **Panel de Administrador**\n\n"
+    mensaje += f"📝 Total de preguntas: {total_preguntas}\n"
+    mensaje += f"🚀 Cuestionario activo: {cuestionario_nombre}\n"
+
+    if update.callback_query:
+        await update.callback_query.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
+
 
 # ============================================================
 # FUNCIÓN PARA CANCELAR CONVERSACIONES
@@ -38,7 +67,7 @@ async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TY
     """Cancela la conversación actual y vuelve al menú"""
     user_id = update.effective_user.id
     admin_estado.pop(user_id, None)
-    context.user_data.pop('conversation_state', None)  # <--- AGREGADO
+    context.user_data.pop('conversation_state', None)
     context.user_data.clear()
     
     await update.message.reply_text(
@@ -56,7 +85,7 @@ async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def iniciar_crear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 1: Preguntar cuántas preguntas"""
-    context.user_data['conversation_state'] = True  # <--- AGREGADO
+    context.user_data['conversation_state'] = True
     admin_estado[update.effective_user.id] = {}
     await update.message.reply_text(
         "📝 **Crear preguntas**\n\n"
@@ -456,7 +485,6 @@ async def guardar_preguntas_en_supabase(update: Update, context: ContextTypes.DE
             parse_mode='Markdown'
         )
     
-    # Usar enviar_panel_admin en lugar de mostrar_panel_admin
     await enviar_panel_admin(update, context)
     return ConversationHandler.END
 
@@ -470,7 +498,7 @@ async def guardar_preguntas_en_supabase(update: Update, context: ContextTypes.DE
 
 async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inicia el proceso de subir un archivo CSV"""
-    context.user_data['conversation_state'] = True  # <--- AGREGADO
+    context.user_data['conversation_state'] = True
     user_id = update.effective_user.id
     admin = db.obtener_admin(user_id)
     
@@ -478,10 +506,8 @@ async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
         return ConversationHandler.END
     
-    # Guardar el admin_id en el estado
     admin_estado[user_id] = {'admin_id': admin['id']}
     
-    # Generar y enviar archivo de ejemplo
     from src.csv_processor import generar_csv_ejemplo
     
     ejemplo = generar_csv_ejemplo()
@@ -504,7 +530,6 @@ async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
-    # Cambiar el estado para esperar el archivo
     admin_estado[user_id]['esperando_csv'] = True
     return ESPERANDO_CSV
 
@@ -517,7 +542,6 @@ async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not estado.get('esperando_csv'):
         return
     
-    # Verificar que sea un documento
     if not update.message.document:
         await update.message.reply_text(
             "❌ Por favor, sube un archivo CSV (no un mensaje de texto).",
@@ -525,7 +549,6 @@ async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ESPERANDO_CSV
     
-    # Verificar que sea un archivo CSV
     documento = update.message.document
     nombre_archivo = documento.file_name or ""
     
@@ -537,25 +560,20 @@ async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ESPERANDO_CSV
     
-    # Descargar el archivo
     try:
         archivo = await documento.get_file()
         contenido = await archivo.download_as_bytearray()
         
-        # Procesar el CSV
         from src.csv_processor import procesar_csv, formatear_resultado_csv
         
         admin_id = estado.get('admin_id')
         exitosas, fallidas, errores = procesar_csv(bytes(contenido), admin_id)
         
-        # Mostrar resultado
         mensaje = formatear_resultado_csv(exitosas, fallidas, errores)
         await update.message.reply_text(mensaje, parse_mode='Markdown')
         
-        # Limpiar estado
         admin_estado.pop(user_id, None)
         
-        # Volver al menú
         await enviar_panel_admin(update, context)
         return ConversationHandler.END
         
@@ -755,7 +773,7 @@ async def mostrar_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def iniciar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Paso 1: Iniciar lanzamiento del cuestionario"""
-    context.user_data['conversation_state'] = True  # <--- AGREGADO
+    context.user_data['conversation_state'] = True
     user_id = update.effective_user.id
     
     admin = db.obtener_admin(user_id)
@@ -1131,7 +1149,6 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         admin_estado.pop(user_id, None)
         context.user_data.pop('conversation_state', None)
         await query.edit_message_text("✅ Lanzamiento cancelado.")
-        # Enviar panel manualmente
         await enviar_panel_admin(update, context)
         return ConversationHandler.END
 
@@ -1181,7 +1198,6 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reintentos=estado.get('reintentos', config.REINTENTOS_DEFAULT)
             )
 
-            # Limpiar estado
             admin_estado.pop(user_id, None)
             context.user_data.pop('conversation_state', None)
 
@@ -1193,8 +1209,6 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mensaje += "Los usuarios ya pueden responder desde el panel de usuario."
 
                 await query.edit_message_text(mensaje, parse_mode='Markdown')
-
-                # Enviar panel manualmente (sin llamar a mostrar_panel_admin)
                 await enviar_panel_admin(update, context)
 
             else:
@@ -1218,32 +1232,7 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return ConversationHandler.END
 
-# Nueva función auxiliar para enviar el panel de admin sin usar mostrar_panel_admin
-async def enviar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Envía el panel de administrador manualmente"""
-    user_id = update.effective_user.id
-    admin = db.obtener_admin(user_id)
-    total_preguntas = db.contar_preguntas(admin['id']) if admin else 0
-    cuestionario = db.obtener_cuestionario_activo()
-    cuestionario_nombre = cuestionario.get('nombre', 'Sin nombre') if cuestionario else 'Ninguno activo'
 
-    keyboard = [
-        [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
-        [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
-        [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
-        [config.BOTON_ADMIN['respaldos']]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-    mensaje = f"👑 **Panel de Administrador**\n\n"
-    mensaje += f"📝 Total de preguntas: {total_preguntas}\n"
-    mensaje += f"🚀 Cuestionario activo: {cuestionario_nombre}\n"
-
-    # Usar query.message para enviar si existe, o update.message
-    if update.callback_query:
-        await update.callback_query.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-    else:
-        await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
 # ============================================================
 # GESTIONAR - EN DESARROLLO
 # ============================================================
@@ -1277,7 +1266,6 @@ async def mostrar_respaldos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def registrar_handlers(application, group=1):
     """Registra todos los ConversationHandlers del admin con prioridad group"""
     
-    # Crear el ConversationHandler para crear preguntas
     crear_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["crear"]}$'), iniciar_crear)
@@ -1306,7 +1294,6 @@ def registrar_handlers(application, group=1):
         per_message=False,
     )
     
-    # Crear el ConversationHandler para lanzar cuestionario
     lanzar_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["lanzar"]}$'), iniciar_lanzar)
@@ -1345,7 +1332,6 @@ def registrar_handlers(application, group=1):
         per_message=False,
     )
     
-    # Agregar los ConversationHandlers
     application.add_handler(crear_conv, group=group)
     application.add_handler(lanzar_conv, group=group)
     
@@ -1353,7 +1339,6 @@ def registrar_handlers(application, group=1):
     # HANDLERS SIMPLES (sin conversación)
     # ============================================================
     
-    # Subir CSV
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["csv"]}$'), 
@@ -1361,7 +1346,6 @@ def registrar_handlers(application, group=1):
         )
     )
     
-    # Handler para recibir archivos CSV
     application.add_handler(
         MessageHandler(
             filters.Document.ALL, 
@@ -1369,7 +1353,6 @@ def registrar_handlers(application, group=1):
         )
     )
     
-    # Historial
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["historial"]}$'), 
@@ -1377,7 +1360,6 @@ def registrar_handlers(application, group=1):
         )
     )
     
-    # Configurar
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["configurar"]}$'), 
@@ -1385,7 +1367,6 @@ def registrar_handlers(application, group=1):
         )
     )
     
-    # Gestionar
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), 
@@ -1393,7 +1374,6 @@ def registrar_handlers(application, group=1):
         )
     )
     
-    # Respaldos
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["respaldos"]}$'), 
@@ -1401,7 +1381,6 @@ def registrar_handlers(application, group=1):
         )
     )
     
-    # Handler para limpiar historial (recibir número de días)
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
