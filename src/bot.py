@@ -231,7 +231,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela cualquier conversación en curso"""
-    context.user_data.pop('conversation_state', None)  # <--- AGREGADO
+    context.user_data.pop('conversation_state', None)
     context.user_data.clear()
     
     await update.message.reply_text(
@@ -274,11 +274,7 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await mostrar_gestion(update, context)
         elif text == config.BOTON_ADMIN['respaldos']:
             await mostrar_respaldos(update, context)
-        else:
-            await update.message.reply_text(
-                "❌ Opción no reconocida. Usa los botones del menú.",
-                parse_mode='Markdown'
-            )
+        # NOTA: NO se muestra ningún mensaje de error para mensajes no reconocidos
     else:
         from src.user_handlers import user_handlers
         
@@ -286,7 +282,7 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await user_handlers.iniciar_responder(update, context)
         elif text == config.BOTON_USUARIO['mi_historial']:
             await user_handlers.mostrar_mi_historial(update, context)
-        
+        # NOTA: NO se muestra ningún mensaje de error para mensajes no reconocidos
 
 
 # ============================================================
@@ -374,7 +370,8 @@ def configurar_bot() -> Application:
                 from src.cuestionario import mostrar_respuestas_correctas
                 await mostrar_respuestas_correctas(update, context, sesion['id'])
         else:
-            await query.edit_message_text("❌ Opción no reconocida.")
+            # Ignorar silenciosamente otros callbacks
+            pass
     
     application.add_handler(CallbackQueryHandler(manejar_callback))
     
