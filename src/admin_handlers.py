@@ -29,30 +29,6 @@ from src.estados import *
 
 admin_estado = {}
 
-async def enviar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Envía el panel de administrador manualmente"""
-    user_id = update.effective_user.id
-    admin = db.obtener_admin(user_id)
-    total_preguntas = db.contar_preguntas(admin['id']) if admin else 0
-    cuestionario = db.obtener_cuestionario_activo()
-    cuestionario_nombre = cuestionario.get('nombre', 'Sin nombre') if cuestionario else 'Ninguno activo'
-
-    keyboard = [
-        [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
-        [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
-        [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
-        [config.BOTON_ADMIN['respaldos']]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-    mensaje = f"👑 **Panel de Administrador**\n\n"
-    mensaje += f"📝 Total de preguntas: {total_preguntas}\n"
-    mensaje += f"🚀 Cuestionario activo: {cuestionario_nombre}\n"
-
-    if update.callback_query:
-        await update.callback_query.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
-    else:
-        await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
 
 # ============================================================
 # FUNCIÓN PARA CANCELAR CONVERSACIONES
@@ -70,8 +46,7 @@ async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode='Markdown'
     )
     
-    from src.bot import mostrar_panel_admin
-    await mostrar_panel_admin(update, context)
+    await enviar_panel_admin(update, context)
     return ConversationHandler.END
 
 
@@ -581,8 +556,7 @@ async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         admin_estado.pop(user_id, None)
         
         # Volver al menú
-        from src.bot import mostrar_panel_admin
-        await mostrar_panel_admin(update, context)
+        await enviar_panel_admin(update, context)
         return ConversationHandler.END
         
     except Exception as e:
@@ -682,8 +656,7 @@ async def manejar_callback_historial(update: Update, context: ContextTypes.DEFAU
         
         if tipo == 'cerrar':
             await query.edit_message_text("✅ Historial cerrado.")
-            from src.bot import mostrar_panel_admin
-            await mostrar_panel_admin(update, context)
+            await enviar_panel_admin(update, context)
             return
         
         if tipo == 'limpiar':
@@ -897,8 +870,7 @@ async def manejar_seleccion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == 'lanzar_cancelar':
         admin_estado.pop(user_id, None)
         await query.edit_message_text("✅ Lanzamiento cancelado.")
-        from src.bot import mostrar_panel_admin
-        await mostrar_panel_admin(update, context)
+        await enviar_panel_admin(update, context)
         return ConversationHandler.END
     
     admin_estado[user_id]['seleccion_tipo'] = data.replace('lanzar_', '')
