@@ -339,39 +339,47 @@ def configurar_bot() -> Application:
         
         data = query.data
         
-        # Callbacks de admin
-        if data.startswith('admin_'):
-            if data.startswith('admin_hist_'):
-                await manejar_callback_historial(update, context)
-            else:
-                from src.admin_handlers import admin_handlers
-                await admin_handlers.manejar_callback_admin(update, context)
+        # Callbacks de admin (historial)
+        if data.startswith('admin_hist_'):
+            from src.admin_handlers import manejar_callback_historial
+            await manejar_callback_historial(update, context)
+            return
+        
+        # Callbacks de configuración
+        if data.startswith('config_'):
+            from src.admin_handlers import manejar_callback_config
+            await manejar_callback_config(update, context)
+            return
         
         # Callbacks de usuario
-        elif data.startswith('user_'):
+        if data.startswith('user_'):
             from src.user_handlers import user_handlers
             await user_handlers.manejar_callback_usuario(update, context)
+            return
         
-        # Respuestas
-        elif data.startswith('resp_'):
+        # Respuestas a preguntas
+        if data.startswith('resp_'):
             from src.user_handlers import user_handlers
             await user_handlers.manejar_respuesta(update, context)
+            return
         
         # Lanzar cuestionario (ya manejado en admin_handlers)
-        elif data.startswith('lanzar_'):
-            pass
+        if data.startswith('lanzar_'):
+            return
         
-        elif data == 'cancelar':
+        if data == 'cancelar':
             await cancelar(update, context)
+            return
         
-        elif data == 'ver_correctas':
+        if data == 'ver_correctas':
             sesion = db.obtener_sesion_activa(update.effective_user.id)
             if sesion:
                 from src.cuestionario import mostrar_respuestas_correctas
                 await mostrar_respuestas_correctas(update, context, sesion['id'])
-        else:
-            # Ignorar silenciosamente otros callbacks
-            pass
+            return
+        
+        # Si nada coincide, ignorar silenciosamente
+        return
     
     application.add_handler(CallbackQueryHandler(manejar_callback))
     
