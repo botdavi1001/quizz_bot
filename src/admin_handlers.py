@@ -1444,7 +1444,7 @@ async def recibir_csv_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Recibe y procesa el archivo CSV - REEMPLAZA TODAS LAS PREGUNTAS"""
     user_id = update.effective_user.id
     estado = admin_estado.get(user_id, {})
-
+    
     # Si el usuario escribe cancelar
     if update.message.text and update.message.text.lower() == 'cancelar':
         admin_estado.pop(user_id, None)
@@ -1452,7 +1452,17 @@ async def recibir_csv_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE
         await enviar_panel_admin(update, context)
         return ConversationHandler.END
     
-    if not estado.get('esperando_csv') or estado.get('modo') != 'reemplazar_csv':
+    # Verificar que estamos en modo reemplazo
+    if estado.get('modo') != 'reemplazar_csv':
+        # Si no es modo reemplazo, ignorar (lo manejará recibir_csv)
+        return
+    
+    if not estado.get('esperando_csv'):
+        await update.message.reply_text(
+            "❌ No estás en modo de subida de CSV.\n"
+            "Usa 'Gestionar' → '📤 Subir CSV (reemplazar)' primero.",
+            parse_mode='Markdown'
+        )
         return
     
     if not update.message.document:
@@ -1483,9 +1493,9 @@ async def recibir_csv_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # === ELIMINAR TODAS LAS PREGUNTAS EXISTENTES ===
         admin = db.obtener_admin(user_id)
+        eliminadas = 0
         if admin:
             preguntas_existentes = db.obtener_preguntas(admin['id'])
-            eliminadas = 0
             for p in preguntas_existentes:
                 if db.eliminar_pregunta(p['id']):
                     eliminadas += 1
@@ -1526,6 +1536,7 @@ async def recibir_csv_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Verifica que el archivo tenga el formato correcto.",
             parse_mode='Markdown'
         )
+        admin_estado.pop(user_id, None)
         return ESPERANDO_CSV
 
 # ============================================================
