@@ -609,8 +609,21 @@ async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mensaje += f"🗑️ Eliminadas: {eliminadas}\n"
             mensaje += f"✅ Importadas: {exitosas}\n"
             mensaje += f"❌ Fallidas: {fallidas}\n"
+            
+            # MOSTRAR ERRORES ESPECÍFICOS
             if errores:
-                mensaje += f"\n⚠️ Errores: {len(errores)}"
+                mensaje += f"\n⚠️ **Errores encontrados:**\n"
+                for num_fila, error in errores[:10]:  # Mostrar máximo 10 errores
+                    mensaje += f"• Fila {num_fila}: {error}\n"
+                if len(errores) > 10:
+                    mensaje += f"\n... y {len(errores) - 10} errores más"
+                
+                # Dar pistas para corregir
+                mensaje += f"\n\n💡 **Consejos para corregir:**\n"
+                mensaje += "• Verifica que la columna 'pregunta' no esté vacía\n"
+                mensaje += "• Verifica que la columna 'tipo' sea: multiple, vf o abierta\n"
+                mensaje += "• Las opciones deben ir separadas por ;\n"
+                mensaje += "• Los números de correctas deben ser índices válidos"
         else:
             # Modo agregar - usar formateador existente
             from src.csv_processor import formatear_resultado_csv
