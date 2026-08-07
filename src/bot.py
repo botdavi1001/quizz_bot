@@ -356,6 +356,12 @@ def configurar_bot() -> Application:
             from src.user_handlers import user_handlers
             await user_handlers.manejar_callback_usuario(update, context)
             return
+
+        # Callbacks de gestión
+        if data.startswith('gestion_'):
+            from src.admin_handlers import manejar_callback_gestion
+            await manejar_callback_gestion(update, context)
+            return
         
         # Respuestas a preguntas
         if data.startswith('resp_'):
