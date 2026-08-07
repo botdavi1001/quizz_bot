@@ -1355,10 +1355,6 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
-# GESTIONAR - DESCARGAR Y SUBIR CSV (REEMPLAZO TOTAL)
-# ============================================================
-
-# ============================================================
 # ELIMINAR PREGUNTA - DESCARGAR CSV Y ELIMINAR POR NÚMERO
 # ============================================================
 
@@ -1508,31 +1504,33 @@ async def recibir_eliminar_pregunta(update: Update, context: ContextTypes.DEFAUL
     
     if not indices_a_eliminar:
         await update.message.reply_text(
-            "❌ No seleccionaste ninguna pregunta válida.\n\n"
-            "Usa el formato correcto: `1,3,5-10,15` o `todos`\n"
-            "Los números deben estar entre 1 y {len(preguntas)}.",
+            f"❌ No seleccionaste ninguna pregunta válida.\n\n"
+            f"Usa el formato correcto: `1,3,5-10,15` o `todos`\n"
+            f"Los números deben estar entre 1 y {len(preguntas)}.",
             parse_mode='Markdown'
         )
         return ESPERANDO_ELIMINAR_PREGUNTA
     
-    # Confirmar eliminación
+    # Guardar lista de IDs a eliminar
     preguntas_a_eliminar = [preguntas[i] for i in sorted(indices_a_eliminar)]
+    admin_estado[user_id]['eliminar_lista'] = [p['id'] for p in preguntas_a_eliminar]
     
+    # Mostrar confirmación
     mensaje = f"⚠️ **¿Eliminar {len(preguntas_a_eliminar)} preguntas?**\n\n"
     for i, p in enumerate(preguntas_a_eliminar[:5], 1):
-        texto = p.get('texto', '')[:50]
-        mensaje += f"{i}. {texto}...\n"
+        texto_p = p.get('texto', '')[:50]
+        mensaje += f"{i}. {texto_p}...\n"
     if len(preguntas_a_eliminar) > 5:
         mensaje += f"\n... y {len(preguntas_a_eliminar) - 5} más.\n"
     
     mensaje += f"\nEsta acción **no se puede deshacer**.\n"
     mensaje += "Escribe **SI** (en mayúsculas) para confirmar, o 'cancelar' para salir."
     
-    admin_estado[user_id]['eliminar_lista'] = [p['id'] for p in preguntas_a_eliminar]
-    admin_estado[user_id]['modo'] = 'confirmar_eliminacion'
-    
     await update.message.reply_text(mensaje, parse_mode='Markdown')
-    return CONFIRMAR_ELIMINACION 
+    
+    # Cambiar al estado de confirmación
+    return CONFIRMAR_ELIMINACION
+
 
 async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Confirma la eliminación de las preguntas seleccionadas"""
@@ -1555,6 +1553,7 @@ async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFA
                 eliminadas += 1
         
         admin_estado.pop(user_id, None)
+        
         await update.message.reply_text(
             f"✅ Se eliminaron {eliminadas} preguntas correctamente.",
             parse_mode='Markdown'
@@ -1566,143 +1565,7 @@ async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFA
             "❌ Escribe **SI** para confirmar o 'cancelar' para salir.",
             parse_mode='Markdown'
         )
-        return CONFIRMAR_ELIMINACION    
-
-
-async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Confirma la eliminación de las preguntas seleccionadas"""
-    texto = update.message.text.strip()
-    user_id = update.effective_user.id
-    estado = admin_estado.get(user_id, {})
-    
-    if texto.lower() == 'cancelar':
-        admin_estado.pop(user_id, None)
-        await update.message.reply_text("✅ Eliminación cancelada.", parse_mode='Markdown')
-        await enviar_panel_admin(update, context)
-        return ConversationHandler.END
-    
-    if texto.upper() != 'SI':
-        await update.message.reply_text(
-            "❌ Escribe **SI** para confirmar o 'cancelar' para salir.",
-            parse_mode='Markdown'
-        )
-        return ESPERANDO_ELIMINAR_PREGUNTA
-    
-    # Eliminar preguntas
-    ids_eliminar = estado.get('eliminar_lista', [])
-    eliminadas = 0
-    for pid in ids_eliminar:
-        if db.eliminar_pregunta(pid):
-            eliminadas += 1
-    
-    admin_estado.pop(user_id, None)
-    
-    await update.message.reply_text(
-        f"✅ Se eliminaron {eliminadas} preguntas correctamente.",
-        parse_mode='Markdown'
-    )
-    await enviar_panel_admin(update, context)
-    return ConversationHandler.END
-
-async def manejar_callback_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja los callbacks de gestión"""
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    user_id = update.effective_user.id
-    
-    admin = db.obtener_admin(user_id)
-    if not admin:
-        await query.edit_message_text("❌ No eres admin.", parse_mode='Markdown')
-        return
-    
-    if data == 'gestion_cerrar':
-        await query.edit_message_text("✅ Gestión cerrada.")
-        await enviar_panel_admin(update, context)
-        return
-    
-    if data == 'gestion_exportar':
-        # === EXPORTAR CSV ===
-        preguntas = db.obtener_preguntas(admin['id'])
-        
-        if not preguntas:
-            await query.edit_message_text(
-                "📭 No hay preguntas para exportar.\n\n"
-                "Primero crea algunas preguntas.",
-                parse_mode='Markdown'
-            )
-            return
-        
-        # Generar CSV
-        import csv
-        import io
-        
-        output = io.StringIO()
-        writer = csv.writer(output)
-        
-        writer.writerow([
-            'pregunta',
-            'tipo',
-            'opciones',
-            'correctas',
-            'tiempo',
-            'imagen_url',
-            'video_url',
-            'enlace'
-        ])
-        
-        for p in preguntas:
-            opciones = ';'.join(p.get('opciones', [])) if p.get('opciones') else ''
-            correctas = ','.join(str(c) for c in p.get('respuestas_correctas', [])) if p.get('respuestas_correctas') else ''
-            
-            writer.writerow([
-                p.get('texto', ''),
-                p.get('tipo', 'multiple'),
-                opciones,
-                correctas,
-                p.get('tiempo_segundos', 30),
-                p.get('imagen_url', ''),
-                p.get('video_url', ''),
-                p.get('enlace_url', '')
-            ])
-        
-        csv_content = output.getvalue().encode('utf-8')
-        
-        await query.message.reply_document(
-            document=io.BytesIO(csv_content),
-            filename=f"preguntas_exportadas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            caption=f"📥 **Exportación de preguntas**\n\n"
-                    f"📝 Total: {len(preguntas)} preguntas\n\n"
-                    "Edita este archivo y luego usa '📤 Subir CSV (reemplazar)' para actualizar todas las preguntas.",
-            parse_mode='Markdown'
-        )
-        
-        await query.edit_message_text("✅ Archivo CSV enviado. Puedes editarlo y luego usar 'Subir CSV (reemplazar)'.")
-        return
-    
-    if data == 'gestion_importar':
-        # === PREPARAR PARA SUBIR CSV (REEMPLAZO) ===
-        admin_estado[user_id] = {
-            'admin_id': admin['id'],
-            'modo': 'reemplazar',
-            'esperando_csv': True
-        }
-        
-        await query.edit_message_text(
-            "📤 **Subir CSV (reemplazar todas las preguntas)**\n\n"
-            "⚠️ **ATENCIÓN:** Este proceso **ELIMINARÁ** TODAS las preguntas existentes y las reemplazará con las del archivo.\n\n"
-            "**Formato requerido:**\n"
-            "• `pregunta`: El texto de la pregunta (obligatorio)\n"
-            "• `tipo`: `multiple`, `vf` o `abierta` (obligatorio)\n"
-            "• `opciones`: Separadas por `;`\n"
-            "• `correctas`: Números separados por coma (ej: `1` o `1,3`), o `V`/`F`\n"
-            "• `tiempo`: Segundos (0 = sin límite)\n"
-            "• `imagen_url`, `video_url`, `enlace`: Opcionales\n\n"
-            "**Sube tu archivo CSV cuando estés listo.**\n"
-            "O escribe 'cancelar' para salir.",
-            parse_mode='Markdown'
-        )
-        return ESPERANDO_CSV
+        return CONFIRMAR_ELIMINACION
 
 
 # ============================================================
@@ -1800,7 +1663,7 @@ def registrar_handlers(application, group=1):
 
     gestion_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["eliminar pregunta"]}$'), mostrar_gestion)
+            MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), mostrar_gestion)
         ],
         states={
             ESPERANDO_ELIMINAR_PREGUNTA: [
@@ -1886,8 +1749,6 @@ class AdminHandlers:
         
         if data.startswith('config_'):
             await manejar_callback_config(update, context)
-        elif data.startswith('gestion_'):
-            await manejar_callback_gestion(update, context)
         # Aquí se pueden agregar más callbacks de admin en el futuro
 
 admin_handlers = AdminHandlers()

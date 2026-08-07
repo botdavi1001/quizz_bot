@@ -32,4 +32,8 @@
     ESPERANDO_LANZAR_CONFIRMAR,
     ESPERANDO_ELIMINAR_PREGUNTA,
     CONFIRMAR_ELIMINACION,
-) = range(28)  
+) = range(28)
+
+# ============================================================
+# FIN DE estados.py
+# ============================================================

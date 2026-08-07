@@ -65,7 +65,7 @@ BOTON_ADMIN = {
     'historial': '📊 Ver historial',
     'configurar': '⚙️ Configurar',
     'lanzar': '🚀 Lanzar cuestionario',
-    'gestionar': '🗑️ Gestionar',
+    'gestionar': '🗑️ Eliminar pregunta',
     'respaldos': '📥 Respaldos pendientes'
 }
 
