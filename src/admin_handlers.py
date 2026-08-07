@@ -1298,11 +1298,11 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
-# GESTIONAR
+# GESTIONAR - DESCARGAR CSV DE TODAS LAS PREGUNTAS
 # ============================================================
 
 async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra el panel de gestión con las opciones disponibles"""
+    """Descarga un CSV con todas las preguntas para que el admin lo edite"""
     user_id = update.effective_user.id
     admin = db.obtener_admin(user_id)
     
@@ -1310,392 +1310,72 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
         return
     
-    keyboard = [
-        [InlineKeyboardButton("📝 Editar pregunta", callback_data="gestion_editar")],
-        [InlineKeyboardButton("❌ Eliminar pregunta", callback_data="gestion_eliminar")],
-        [InlineKeyboardButton("🗑️ Eliminar todas las preguntas", callback_data="gestion_eliminar_todas")],
-        [InlineKeyboardButton("📊 Ver historial (limpiar)", callback_data="gestion_historial")],
-        [InlineKeyboardButton("❌ Cerrar", callback_data="gestion_cerrar")]
-    ]
+    # Obtener todas las preguntas del admin
+    preguntas = db.obtener_preguntas(admin['id'])
     
-    total_preguntas = db.contar_preguntas(admin['id'])
+    if not preguntas:
+        await update.message.reply_text(
+            "📭 No hay preguntas para exportar.\n\n"
+            "Primero crea algunas preguntas.",
+            parse_mode='Markdown'
+        )
+        return
     
-    mensaje = f"🗑️ **Gestión**\n\n"
-    mensaje += f"📝 Total de preguntas: {total_preguntas}\n\n"
-    mensaje += "Selecciona una opción:"
+    # Generar CSV
+    import csv
+    import io
     
-    await update.message.reply_text(
-        mensaje,
-        reply_markup=InlineKeyboardMarkup(keyboard),
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Encabezados
+    writer.writerow([
+        'pregunta',
+        'tipo',
+        'opciones',
+        'correctas',
+        'tiempo',
+        'imagen_url',
+        'video_url',
+        'enlace'
+    ])
+    
+    # Datos
+    for p in preguntas:
+        opciones = ';'.join(p.get('opciones', [])) if p.get('opciones') else ''
+        correctas = ','.join(str(c) for c in p.get('respuestas_correctas', [])) if p.get('respuestas_correctas') else ''
+        
+        writer.writerow([
+            p.get('texto', ''),
+            p.get('tipo', 'multiple'),
+            opciones,
+            correctas,
+            p.get('tiempo_segundos', 30),
+            p.get('imagen_url', ''),
+            p.get('video_url', ''),
+            p.get('enlace_url', '')
+        ])
+    
+    csv_content = output.getvalue().encode('utf-8')
+    
+    # Enviar archivo
+    import io as io_bytes
+    
+    await update.message.reply_document(
+        document=io_bytes.BytesIO(csv_content),
+        filename="preguntas_exportadas.csv",
+        caption=f"📥 **Exportación de preguntas**\n\n"
+                f"📝 Total: {len(preguntas)} preguntas\n\n"
+                "Puedes editar este archivo y luego subirlo con **📂 Subir CSV**.\n\n"
+                "**Columnas:**\n"
+                "• `pregunta`: El texto de la pregunta\n"
+                "• `tipo`: multiple, vf o abierta\n"
+                "• `opciones`: Separadas por ;\n"
+                "• `correctas`: Números separados por coma (0=ninguna)\n"
+                "• `tiempo`: Segundos (0=sin límite)\n"
+                "• `imagen_url`, `video_url`, `enlace`: Opcionales",
         parse_mode='Markdown'
     )
-
-
-async def manejar_callback_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja los callbacks de gestión"""
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    user_id = update.effective_user.id
-    
-    admin = db.obtener_admin(user_id)
-    if not admin:
-        await query.edit_message_text("❌ No eres admin.", parse_mode='Markdown')
-        return
-    
-    if data == 'gestion_cerrar':
-        await query.edit_message_text("✅ Gestión cerrada.")
-        await enviar_panel_admin(update, context)
-        return
-    
-    if data == 'gestion_historial':
-        await query.edit_message_text(
-            "📊 **Limpiar historial**\n\n"
-            "Esta opción está disponible en 'Ver historial'.\n"
-            "Ve a 📊 Ver historial → 🗑️ Limpiar historial.",
-            parse_mode='Markdown'
-        )
-        await mostrar_gestion(update, context)
-        return
-    
-    if data == 'gestion_editar':
-        preguntas = db.obtener_preguntas(admin['id'])
-        if not preguntas:
-            await query.edit_message_text("❌ No hay preguntas para editar.", parse_mode='Markdown')
-            await mostrar_gestion(update, context)
-            return
-        
-        admin_estado[user_id] = {'preguntas': preguntas, 'modo': 'editar'}
-        
-        mensaje = "📝 **Editar pregunta**\n\n"
-        mensaje += "Escribe el número de la pregunta que quieres editar:\n\n"
-        
-        for i, p in enumerate(preguntas[:20], 1):
-            texto = p.get('texto', '')[:50]
-            mensaje += f"{i}. {texto}...\n"
-        
-        if len(preguntas) > 20:
-            mensaje += f"\n... y {len(preguntas) - 20} más."
-        
-        mensaje += "\n\nEscribe el número o 'cancelar' para salir:"
-        
-        await query.edit_message_text(mensaje, parse_mode='Markdown')
-        return ESPERANDO_EDITAR_PREGUNTA
-    
-    if data == 'gestion_eliminar':
-        preguntas = db.obtener_preguntas(admin['id'])
-        if not preguntas:
-            await query.edit_message_text("❌ No hay preguntas para eliminar.", parse_mode='Markdown')
-            await mostrar_gestion(update, context)
-            return
-        
-        admin_estado[user_id] = {'preguntas': preguntas, 'modo': 'eliminar'}
-        
-        mensaje = "❌ **Eliminar pregunta**\n\n"
-        mensaje += "Escribe el número de la pregunta que quieres eliminar:\n\n"
-        
-        for i, p in enumerate(preguntas[:20], 1):
-            texto = p.get('texto', '')[:50]
-            mensaje += f"{i}. {texto}...\n"
-        
-        if len(preguntas) > 20:
-            mensaje += f"\n... y {len(preguntas) - 20} más."
-        
-        mensaje += "\n\nEscribe el número o 'cancelar' para salir:"
-        
-        await query.edit_message_text(mensaje, parse_mode='Markdown')
-        return ESPERANDO_ELIMINAR_PREGUNTA
-    
-    if data == 'gestion_eliminar_todas':
-        total = db.contar_preguntas(admin['id'])
-        await query.edit_message_text(
-            f"⚠️ **¿Eliminar TODAS las preguntas?**\n\n"
-            f"Hay {total} preguntas en total.\n\n"
-            "Esta acción **no se puede deshacer**.\n"
-            "Escribe **SI** (en mayúsculas) para confirmar, o 'cancelar' para salir.",
-            parse_mode='Markdown'
-        )
-        admin_estado[user_id] = {'modo': 'eliminar_todas'}
-        return ESPERANDO_ELIMINAR_PREGUNTA
-
-
-async def recibir_editar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Recibe el número de la pregunta a editar"""
-    texto = update.message.text.strip()
-    user_id = update.effective_user.id
-    estado = admin_estado.get(user_id, {})
-    
-    if texto.lower() == 'cancelar':
-        admin_estado.pop(user_id, None)
-        await update.message.reply_text("✅ Edición cancelada.")
-        await mostrar_gestion(update, context)
-        return ConversationHandler.END
-    
-    preguntas = estado.get('preguntas', [])
-    if not preguntas:
-        await update.message.reply_text("❌ No hay preguntas disponibles.", parse_mode='Markdown')
-        await mostrar_gestion(update, context)
-        return ConversationHandler.END
-    
-    try:
-        idx = int(texto) - 1
-        if idx < 0 or idx >= len(preguntas):
-            await update.message.reply_text(
-                f"❌ Número inválido. Escribe un número entre 1 y {len(preguntas)}:",
-                parse_mode='Markdown'
-            )
-            return ESPERANDO_EDITAR_PREGUNTA
-        
-        pregunta = preguntas[idx]
-        admin_estado[user_id]['pregunta_editar'] = pregunta
-        admin_estado[user_id]['pregunta_idx'] = idx
-        admin_estado[user_id]['editando'] = True
-        admin_estado[user_id]['editando_campo'] = False
-        
-        mensaje = f"📝 **Editando pregunta {idx + 1}**\n\n"
-        mensaje += f"📌 Texto: {pregunta.get('texto', 'Sin texto')}\n"
-        mensaje += f"📋 Tipo: {pregunta.get('tipo', 'desconocido')}\n"
-        mensaje += f"⏱️ Tiempo: {pregunta.get('tiempo_segundos', 30)}s\n\n"
-        mensaje += "**¿Qué quieres editar?**\n"
-        mensaje += "• `texto` - Cambiar el texto\n"
-        mensaje += "• `tipo` - Cambiar el tipo\n"
-        mensaje += "• `tiempo` - Cambiar el tiempo\n"
-        mensaje += "• `opciones` - Cambiar opciones (solo múltiple)\n"
-        mensaje += "• `correctas` - Cambiar respuestas correctas\n"
-        mensaje += "• `guardar` - Guardar cambios\n"
-        mensaje += "• `cancelar` - Salir"
-        
-        await update.message.reply_text(mensaje, parse_mode='Markdown')
-        return ESPERANDO_EDITAR_PREGUNTA
-        
-    except ValueError:
-        await update.message.reply_text(
-            "❌ Escribe un número válido.",
-            parse_mode='Markdown'
-        )
-        return ESPERANDO_EDITAR_PREGUNTA
-
-
-async def recibir_editar_campo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Recibe el campo a editar y su nuevo valor"""
-    texto = update.message.text.strip()
-    user_id = update.effective_user.id
-    estado = admin_estado.get(user_id, {})
-    
-    if texto.lower() == 'cancelar':
-        admin_estado.pop(user_id, None)
-        await update.message.reply_text("✅ Edición cancelada.")
-        await mostrar_gestion(update, context)
-        return ConversationHandler.END
-    
-    if texto.lower() == 'guardar':
-        pregunta = estado.get('pregunta_editar', {})
-        pregunta_id = pregunta.get('id')
-        if pregunta_id:
-            datos_actualizar = {
-                'texto': estado.get('nuevo_texto', pregunta.get('texto', '')),
-                'tipo': estado.get('nuevo_tipo', pregunta.get('tipo', 'multiple')),
-                'tiempo_segundos': estado.get('nuevo_tiempo', pregunta.get('tiempo_segundos', 30)),
-            }
-            if estado.get('nuevas_opciones') is not None:
-                datos_actualizar['opciones'] = estado['nuevas_opciones']
-            if estado.get('nuevas_correctas') is not None:
-                datos_actualizar['respuestas_correctas'] = estado['nuevas_correctas']
-            
-            exito = db.actualizar_pregunta(pregunta_id, datos_actualizar)
-            if exito:
-                await update.message.reply_text("✅ Pregunta actualizada correctamente.", parse_mode='Markdown')
-            else:
-                await update.message.reply_text("❌ Error al actualizar la pregunta.", parse_mode='Markdown')
-        
-        admin_estado.pop(user_id, None)
-        await mostrar_gestion(update, context)
-        return ConversationHandler.END
-    
-    if estado.get('editando_campo'):
-        campo = estado.get('campo_editando', '')
-        pregunta = estado.get('pregunta_editar', {})
-        
-        if campo == 'texto':
-            estado['nuevo_texto'] = texto
-            await update.message.reply_text(f"✅ Texto actualizado: {texto}", parse_mode='Markdown')
-        
-        elif campo == 'tiempo':
-            try:
-                tiempo = int(texto)
-                if tiempo < 0:
-                    await update.message.reply_text("❌ El tiempo no puede ser negativo.", parse_mode='Markdown')
-                    return ESPERANDO_EDITAR_PREGUNTA
-                estado['nuevo_tiempo'] = tiempo
-                await update.message.reply_text(f"✅ Tiempo actualizado: {tiempo}s", parse_mode='Markdown')
-            except ValueError:
-                await update.message.reply_text("❌ Escribe un número válido.", parse_mode='Markdown')
-                return ESPERANDO_EDITAR_PREGUNTA
-        
-        elif campo == 'tipo':
-            if texto.lower() in ['multiple', 'vf', 'abierta']:
-                estado['nuevo_tipo'] = texto.lower()
-                await update.message.reply_text(f"✅ Tipo actualizado: {texto}", parse_mode='Markdown')
-            else:
-                await update.message.reply_text("❌ Tipo inválido. Usa: multiple, vf o abierta", parse_mode='Markdown')
-                return ESPERANDO_EDITAR_PREGUNTA
-        
-        elif campo == 'opciones':
-            opciones = [o.strip() for o in texto.split(';') if o.strip()]
-            if len(opciones) < 2:
-                await update.message.reply_text("❌ Debes escribir al menos 2 opciones separadas por ;", parse_mode='Markdown')
-                return ESPERANDO_EDITAR_PREGUNTA
-            estado['nuevas_opciones'] = opciones
-            await update.message.reply_text(f"✅ Opciones actualizadas: {len(opciones)} opciones", parse_mode='Markdown')
-        
-        elif campo == 'correctas':
-            try:
-                indices = [int(i.strip()) for i in texto.split(',') if i.strip()]
-                estado['nuevas_correctas'] = indices
-                await update.message.reply_text(f"✅ Correctas actualizadas: {indices}", parse_mode='Markdown')
-            except ValueError:
-                await update.message.reply_text("❌ Escribe números separados por coma (ej: 1,3) o 0 para ninguna", parse_mode='Markdown')
-                return ESPERANDO_EDITAR_PREGUNTA
-        
-        estado['editando_campo'] = False
-        estado['campo_editando'] = ''
-        
-        mensaje = f"📝 **Editando pregunta**\n\n"
-        mensaje += f"📌 Texto: {estado.get('nuevo_texto', pregunta.get('texto', 'Sin texto'))}\n"
-        mensaje += f"📋 Tipo: {estado.get('nuevo_tipo', pregunta.get('tipo', 'desconocido'))}\n"
-        mensaje += f"⏱️ Tiempo: {estado.get('nuevo_tiempo', pregunta.get('tiempo_segundos', 30))}s\n\n"
-        mensaje += "**¿Qué quieres editar?**\n"
-        mensaje += "• `texto` - Cambiar el texto\n"
-        mensaje += "• `tipo` - Cambiar el tipo\n"
-        mensaje += "• `tiempo` - Cambiar el tiempo\n"
-        mensaje += "• `opciones` - Cambiar opciones (solo múltiple)\n"
-        mensaje += "• `correctas` - Cambiar respuestas correctas\n"
-        mensaje += "• `guardar` - Guardar cambios\n"
-        mensaje += "• `cancelar` - Salir"
-        
-        await update.message.reply_text(mensaje, parse_mode='Markdown')
-        return ESPERANDO_EDITAR_PREGUNTA
-    
-    if texto.lower() in ['texto', 'tipo', 'tiempo', 'opciones', 'correctas']:
-        estado['editando_campo'] = True
-        estado['campo_editando'] = texto.lower()
-        
-        mensajes = {
-            'texto': "✏️ Escribe el nuevo texto de la pregunta:",
-            'tipo': "📋 Escribe el nuevo tipo (multiple, vf o abierta):",
-            'tiempo': "⏱️ Escribe el nuevo tiempo en segundos:",
-            'opciones': "📝 Escribe las nuevas opciones separadas por ; (ej: Opción 1;Opción 2;Opción 3):",
-            'correctas': "✅ Escribe los nuevos índices correctos (ej: 1,3) o 0 para ninguna:"
-        }
-        
-        await update.message.reply_text(mensajes.get(texto.lower(), "❌ Opción inválida."), parse_mode='Markdown')
-        return ESPERANDO_EDITAR_PREGUNTA
-    else:
-        await update.message.reply_text(
-            "❌ Opción inválida. Usa: texto, tipo, tiempo, opciones, correctas, guardar o cancelar",
-            parse_mode='Markdown'
-        )
-        return ESPERANDO_EDITAR_PREGUNTA
-
-
-async def recibir_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Recibe el número de la pregunta a eliminar"""
-    texto = update.message.text.strip()
-    user_id = update.effective_user.id
-    estado = admin_estado.get(user_id, {})
-    
-    if texto.lower() == 'cancelar':
-        admin_estado.pop(user_id, None)
-        await update.message.reply_text("✅ Eliminación cancelada.")
-        await mostrar_gestion(update, context)
-        return ConversationHandler.END
-    
-    if estado.get('modo') == 'eliminar_todas':
-        if texto.upper() == 'SI':
-            admin = db.obtener_admin(user_id)
-            if admin:
-                preguntas = db.obtener_preguntas(admin['id'])
-                eliminadas = 0
-                for p in preguntas:
-                    if db.eliminar_pregunta(p['id']):
-                        eliminadas += 1
-                await update.message.reply_text(f"🗑️ Se eliminaron {eliminadas} preguntas correctamente.", parse_mode='Markdown')
-            admin_estado.pop(user_id, None)
-            await mostrar_gestion(update, context)
-            return ConversationHandler.END
-        else:
-            await update.message.reply_text("❌ Eliminación cancelada.", parse_mode='Markdown')
-            admin_estado.pop(user_id, None)
-            await mostrar_gestion(update, context)
-            return ConversationHandler.END
-    
-    preguntas = estado.get('preguntas', [])
-    if not preguntas:
-        await update.message.reply_text("❌ No hay preguntas disponibles.", parse_mode='Markdown')
-        await mostrar_gestion(update, context)
-        return ConversationHandler.END
-    
-    try:
-        idx = int(texto) - 1
-        if idx < 0 or idx >= len(preguntas):
-            await update.message.reply_text(
-                f"❌ Número inválido. Escribe un número entre 1 y {len(preguntas)}:",
-                parse_mode='Markdown'
-            )
-            return ESPERANDO_ELIMINAR_PREGUNTA
-        
-        pregunta = preguntas[idx]
-        
-        await update.message.reply_text(
-            f"⚠️ **¿Eliminar la pregunta?**\n\n"
-            f"📝 {pregunta.get('texto', 'Sin texto')}\n\n"
-            f"Escribe **SI** (en mayúsculas) para confirmar, o 'cancelar' para salir.",
-            parse_mode='Markdown'
-        )
-        
-        admin_estado[user_id]['pregunta_eliminar'] = pregunta
-        admin_estado[user_id]['modo'] = 'confirmar_eliminar'
-        return ESPERANDO_ELIMINAR_PREGUNTA
-        
-    except ValueError:
-        await update.message.reply_text(
-            "❌ Escribe un número válido.",
-            parse_mode='Markdown'
-        )
-        return ESPERANDO_ELIMINAR_PREGUNTA
-
-
-async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Confirma la eliminación de una pregunta"""
-    texto = update.message.text.strip()
-    user_id = update.effective_user.id
-    estado = admin_estado.get(user_id, {})
-    
-    if texto.lower() == 'cancelar':
-        admin_estado.pop(user_id, None)
-        await update.message.reply_text("✅ Eliminación cancelada.")
-        await mostrar_gestion(update, context)
-        return ConversationHandler.END
-    
-    if texto.upper() == 'SI':
-        pregunta = estado.get('pregunta_eliminar', {})
-        pregunta_id = pregunta.get('id')
-        if pregunta_id:
-            exito = db.eliminar_pregunta(pregunta_id)
-            if exito:
-                await update.message.reply_text("✅ Pregunta eliminada correctamente.", parse_mode='Markdown')
-            else:
-                await update.message.reply_text("❌ Error al eliminar la pregunta.", parse_mode='Markdown')
-        
-        admin_estado.pop(user_id, None)
-        await mostrar_gestion(update, context)
-        return ConversationHandler.END
-    else:
-        await update.message.reply_text(
-            "❌ Escribe **SI** para confirmar o 'cancelar' para salir.",
-            parse_mode='Markdown'
-        )
-        return ESPERANDO_ELIMINAR_PREGUNTA
 
 
 # ============================================================
@@ -1784,34 +1464,8 @@ def registrar_handlers(application, group=1):
         per_message=False,
     )
     
-    # ============================================================
-    # CONVERSACIÓN: GESTIONAR
-    # ============================================================
-    
-    gestion_conv = ConversationHandler(
-        entry_points=[
-            MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), mostrar_gestion)
-        ],
-        states={
-            ESPERANDO_EDITAR_PREGUNTA: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_editar_pregunta),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_editar_campo),
-            ],
-            ESPERANDO_ELIMINAR_PREGUNTA: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_eliminar_pregunta),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, confirmar_eliminar_pregunta),
-            ],
-        },
-        fallbacks=[
-            CommandHandler("cancelar", cancelar_conversacion)
-        ],
-        allow_reentry=True,
-        per_message=False,
-    )
-    
     application.add_handler(crear_conv, group=group)
     application.add_handler(lanzar_conv, group=group)
-    application.add_handler(gestion_conv, group=group)
     
     # ============================================================
     # HANDLERS SIMPLES (sin conversación)
@@ -1846,6 +1500,14 @@ def registrar_handlers(application, group=1):
         )
     )
     
+    # Gestionar - solo descarga CSV (sin conversación)
+    application.add_handler(
+        MessageHandler(
+            filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), 
+            mostrar_gestion
+        )
+    )
+    
     # Respaldos
     application.add_handler(
         MessageHandler(
@@ -1877,8 +1539,6 @@ class AdminHandlers:
         
         if data.startswith('config_'):
             await manejar_callback_config(update, context)
-        elif data.startswith('gestion_'):
-            await manejar_callback_gestion(update, context)
         # Aquí se pueden agregar más callbacks de admin en el futuro
 
 admin_handlers = AdminHandlers()
