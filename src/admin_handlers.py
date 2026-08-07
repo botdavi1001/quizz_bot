@@ -493,11 +493,11 @@ async def guardar_preguntas_en_supabase(update: Update, context: ContextTypes.DE
 # ============================================================
 
 # ============================================================
-# SUBIR CSV - COMPLETO
+# SUBIR CSV - COMPLETO (UNIFICADO: AGREGAR Y REEMPLAZAR)
 # ============================================================
 
 async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inicia el proceso de subir un archivo CSV"""
+    """Inicia el proceso de subir un archivo CSV (MODO AGREGAR)"""
     context.user_data['conversation_state'] = True
     user_id = update.effective_user.id
     admin = db.obtener_admin(user_id)
@@ -506,7 +506,11 @@ async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
         return ConversationHandler.END
     
-    admin_estado[user_id] = {'admin_id': admin['id']}
+    # Establecer modo "agregar"
+    admin_estado[user_id] = {
+        'admin_id': admin['id'],
+        'modo': 'agregar'
+    }
     
     from src.csv_processor import generar_csv_ejemplo
     
@@ -515,7 +519,7 @@ async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_document(
         document=ejemplo,
         filename="ejemplo.csv",
-        caption="📂 **Subir CSV**\n\n"
+        caption="📂 **Subir CSV (AGREGAR preguntas)**\n\n"
                 "Descarga este archivo de ejemplo, edítalo y súbelo.\n\n"
                 "**Columnas:**\n"
                 "• `pregunta`: El texto de la pregunta (obligatorio)\n"
@@ -526,7 +530,7 @@ async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "• `imagen_url`: URL de imagen (opcional)\n"
                 "• `video_url`: URL de video (opcional)\n"
                 "• `enlace`: URL adicional (opcional)\n\n"
-                "Sube el archivo CSV cuando esté listo.",
+                "⚠️ **Modo AGREGAR:** Las preguntas nuevas se añadirán sin eliminar las existentes.",
         parse_mode='Markdown'
     )
     
@@ -535,16 +539,21 @@ async def iniciar_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Recibe y procesa el archivo CSV"""
+    """Recibe y procesa el archivo CSV - AGREGAR o REEMPLAZAR según el modo"""
     user_id = update.effective_user.id
     estado = admin_estado.get(user_id, {})
-
-     # Si es un archivo de gestión (reemplazo), ignorar aquí
-    if estado.get('modo') == 'reemplazar_csv':
+    
+    # Verificar si el usuario está esperando un CSV
+    if not estado.get('esperando_csv'):
+        # Si no está esperando, ignorar (podría ser otro archivo)
         return
     
-    if not estado.get('esperando_csv'):
-        return
+    # Si el usuario escribe cancelar
+    if update.message.text and update.message.text.lower() == 'cancelar':
+        admin_estado.pop(user_id, None)
+        await update.message.reply_text("✅ Operación cancelada.", parse_mode='Markdown')
+        await enviar_panel_admin(update, context)
+        return ConversationHandler.END
     
     if not update.message.document:
         await update.message.reply_text(
@@ -568,16 +577,46 @@ async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         archivo = await documento.get_file()
         contenido = await archivo.download_as_bytearray()
         
-        from src.csv_processor import procesar_csv, formatear_resultado_csv
+        from src.csv_processor import procesar_csv
         
         admin_id = estado.get('admin_id')
+        modo = estado.get('modo', 'agregar')
+        admin = db.obtener_admin(user_id)
+        
+        if not admin:
+            await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
+            admin_estado.pop(user_id, None)
+            return ConversationHandler.END
+        
+        # === SI ES REEMPLAZO, ELIMINAR TODAS LAS PREGUNTAS ===
+        eliminadas = 0
+        if modo == 'reemplazar':
+            preguntas_existentes = db.obtener_preguntas(admin['id'])
+            for p in preguntas_existentes:
+                if db.eliminar_pregunta(p['id']):
+                    eliminadas += 1
+            log_info(f"🗑️ Eliminadas {eliminadas} preguntas existentes (reemplazo)")
+        
+        # === GUARDAR NUEVAS PREGUNTAS ===
         exitosas, fallidas, errores = procesar_csv(bytes(contenido), admin_id)
         
-        mensaje = formatear_resultado_csv(exitosas, fallidas, errores)
-        await update.message.reply_text(mensaje, parse_mode='Markdown')
-        
+        # Limpiar estado
         admin_estado.pop(user_id, None)
         
+        # Mostrar resultado según modo
+        if modo == 'reemplazar':
+            mensaje = f"📥 **Reemplazo completado**\n\n"
+            mensaje += f"🗑️ Eliminadas: {eliminadas}\n"
+            mensaje += f"✅ Importadas: {exitosas}\n"
+            mensaje += f"❌ Fallidas: {fallidas}\n"
+            if errores:
+                mensaje += f"\n⚠️ Errores: {len(errores)}"
+        else:
+            # Modo agregar - usar formateador existente
+            from src.csv_processor import formatear_resultado_csv
+            mensaje = formatear_resultado_csv(exitosas, fallidas, errores)
+        
+        await update.message.reply_text(mensaje, parse_mode='Markdown')
         await enviar_panel_admin(update, context)
         return ConversationHandler.END
         
@@ -588,6 +627,7 @@ async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Verifica que el archivo tenga el formato correcto.",
             parse_mode='Markdown'
         )
+        admin_estado.pop(user_id, None)
         return ESPERANDO_CSV
 
 # ============================================================
@@ -1302,10 +1342,6 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
-# GESTIONAR - DESCARGAR CSV DE TODAS LAS PREGUNTAS
-# ============================================================
-
-# ============================================================
 # GESTIONAR - DESCARGAR Y SUBIR CSV (REEMPLAZO TOTAL)
 # ============================================================
 
@@ -1419,7 +1455,8 @@ async def manejar_callback_gestion(update: Update, context: ContextTypes.DEFAULT
         # === PREPARAR PARA SUBIR CSV (REEMPLAZO) ===
         admin_estado[user_id] = {
             'admin_id': admin['id'],
-            'modo': 'reemplazar_csv'
+            'modo': 'reemplazar',
+            'esperando_csv': True
         }
         
         await query.edit_message_text(
@@ -1436,108 +1473,8 @@ async def manejar_callback_gestion(update: Update, context: ContextTypes.DEFAULT
             "O escribe 'cancelar' para salir.",
             parse_mode='Markdown'
         )
-        admin_estado[user_id]['esperando_csv'] = True
         return ESPERANDO_CSV
 
-
-async def recibir_csv_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Recibe y procesa el archivo CSV - REEMPLAZA TODAS LAS PREGUNTAS"""
-    user_id = update.effective_user.id
-    estado = admin_estado.get(user_id, {})
-    
-    # Si el usuario escribe cancelar
-    if update.message.text and update.message.text.lower() == 'cancelar':
-        admin_estado.pop(user_id, None)
-        await update.message.reply_text("✅ Operación cancelada.", parse_mode='Markdown')
-        await enviar_panel_admin(update, context)
-        return ConversationHandler.END
-    
-    # Verificar que estamos en modo reemplazo
-    if estado.get('modo') != 'reemplazar_csv':
-        # Si no es modo reemplazo, ignorar (lo manejará recibir_csv)
-        return
-    
-    if not estado.get('esperando_csv'):
-        await update.message.reply_text(
-            "❌ No estás en modo de subida de CSV.\n"
-            "Usa 'Gestionar' → '📤 Subir CSV (reemplazar)' primero.",
-            parse_mode='Markdown'
-        )
-        return
-    
-    if not update.message.document:
-        await update.message.reply_text(
-            "❌ Por favor, sube un archivo CSV (no un mensaje de texto).",
-            parse_mode='Markdown'
-        )
-        return ESPERANDO_CSV
-    
-    documento = update.message.document
-    nombre_archivo = documento.file_name or ""
-    
-    if not nombre_archivo.lower().endswith('.csv'):
-        await update.message.reply_text(
-            "❌ El archivo debe tener extensión `.csv`.\n"
-            "Por favor, sube un archivo CSV válido.",
-            parse_mode='Markdown'
-        )
-        return ESPERANDO_CSV
-    
-    try:
-        archivo = await documento.get_file()
-        contenido = await archivo.download_as_bytearray()
-        
-        from src.csv_processor import procesar_csv
-        
-        admin_id = estado.get('admin_id')
-        
-        # === ELIMINAR TODAS LAS PREGUNTAS EXISTENTES ===
-        admin = db.obtener_admin(user_id)
-        eliminadas = 0
-        if admin:
-            preguntas_existentes = db.obtener_preguntas(admin['id'])
-            for p in preguntas_existentes:
-                if db.eliminar_pregunta(p['id']):
-                    eliminadas += 1
-            log_info(f"🗑️ Eliminadas {eliminadas} preguntas existentes antes de importar CSV")
-        
-        # === GUARDAR NUEVAS PREGUNTAS ===
-        exitosas, fallidas, errores = procesar_csv(bytes(contenido), admin_id)
-        
-        # Mostrar resultado
-        mensaje = f"📥 **Importación CSV - REEMPLAZO COMPLETO**\n\n"
-        mensaje += f"🗑️ Eliminadas: {eliminadas} preguntas antiguas\n"
-        mensaje += f"✅ Importadas: {exitosas} preguntas nuevas\n"
-        mensaje += f"❌ Fallidas: {fallidas}\n\n"
-        
-        if errores:
-            mensaje += "**Errores encontrados:**\n"
-            for num_fila, error in errores[:5]:
-                mensaje += f"• Fila {num_fila}: {error}\n"
-            if len(errores) > 5:
-                mensaje += f"\n... y {len(errores) - 5} errores más"
-        
-        if exitosas > 0:
-            mensaje += f"\n\n✅ {exitosas} preguntas guardadas correctamente."
-        elif fallidas > 0 and exitosas == 0:
-            mensaje += f"\n\n❌ No se guardó ninguna pregunta. Verifica el formato del archivo."
-        
-        await update.message.reply_text(mensaje, parse_mode='Markdown')
-        
-        admin_estado.pop(user_id, None)
-        
-        await enviar_panel_admin(update, context)
-        return ConversationHandler.END
-        
-    except Exception as e:
-        log_error(f"Error procesando CSV en gestion: {str(e)}")
-        await update.message.reply_text(
-            f"❌ Error al procesar el archivo: {str(e)[:200]}\n\n"
-            "Verifica que el archivo tenga el formato correcto.",
-            parse_mode='Markdown'
-        )
-        admin_estado.pop(user_id, None)
-        return ESPERANDO_CSV
 
 # ============================================================
 # RESPALDOS - EN DESARROLLO
@@ -1632,6 +1569,7 @@ def registrar_handlers(application, group=1):
     # HANDLERS SIMPLES (sin conversación)
     # ============================================================
     
+    # Subir CSV (entrada al ConversationHandler)
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["csv"]}$'), 
@@ -1639,13 +1577,15 @@ def registrar_handlers(application, group=1):
         )
     )
     
+    # Handler para recibir archivos CSV (UNIFICADO - maneja agregar y reemplazar)
     application.add_handler(
         MessageHandler(
-            filters.Document.ALL, 
+            filters.Document.ALL,
             recibir_csv
         )
     )
     
+    # Historial
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["historial"]}$'), 
@@ -1661,7 +1601,7 @@ def registrar_handlers(application, group=1):
         )
     )
     
-    # Gestionar - solo descarga CSV (sin conversación)
+    # Gestionar
     application.add_handler(
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), 
@@ -1684,14 +1624,6 @@ def registrar_handlers(application, group=1):
         )
     )
 
-    # Handler para recibir CSV desde Gestionar (reemplazo total)
-    application.add_handler(
-        MessageHandler(
-            filters.Document.ALL,
-            recibir_csv_gestion
-        )
-    )
-
 
 # ============================================================
 # EXPORTAR FUNCIONES (Clase AdminHandlers)
@@ -1708,6 +1640,8 @@ class AdminHandlers:
         
         if data.startswith('config_'):
             await manejar_callback_config(update, context)
+        elif data.startswith('gestion_'):
+            await manejar_callback_gestion(update, context)
         # Aquí se pueden agregar más callbacks de admin en el futuro
 
 admin_handlers = AdminHandlers()
