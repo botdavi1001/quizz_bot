@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, filters, MessageHandler, CallbackQueryHandler, CommandHandler
 
 from src import config
@@ -34,6 +34,92 @@ from src.estados import *
 # ============================================================
 
 user_estado = {}
+
+# ============================================================
+# FUNCIÓN AUXILIAR PARA ENVIAR PANEL DE USUARIO
+# ============================================================
+
+async def enviar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Envía el panel de usuario manualmente (sin usar mostrar_panel_usuario)"""
+    user_id = update.effective_user.id
+    admin_id = db.obtener_admin_id()
+    
+    if not admin_id:
+        if update.callback_query:
+            await update.callback_query.message.reply_text(
+                config.MENSAJE_SIN_PREGUNTAS,
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                config.MENSAJE_SIN_PREGUNTAS,
+                parse_mode='Markdown'
+            )
+        return
+    
+    admin = db.obtener_admin(admin_id)
+    if not admin:
+        if update.callback_query:
+            await update.callback_query.message.reply_text(
+                config.MENSAJE_SIN_PREGUNTAS,
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                config.MENSAJE_SIN_PREGUNTAS,
+                parse_mode='Markdown'
+            )
+        return
+    
+    total_preguntas = db.contar_preguntas(admin['id'])
+    if total_preguntas == 0:
+        if update.callback_query:
+            await update.callback_query.message.reply_text(
+                config.MENSAJE_SIN_PREGUNTAS,
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                config.MENSAJE_SIN_PREGUNTAS,
+                parse_mode='Markdown'
+            )
+        return
+    
+    cuestionario = db.obtener_cuestionario_activo()
+    if not cuestionario:
+        if update.callback_query:
+            await update.callback_query.message.reply_text(
+                config.MENSAJE_SIN_CUESTIONARIO,
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                config.MENSAJE_SIN_CUESTIONARIO,
+                parse_mode='Markdown'
+            )
+        return
+    
+    sesion = db.obtener_sesion_activa(user_id)
+    
+    keyboard = [
+        [config.BOTON_USUARIO['responder']],
+        [config.BOTON_USUARIO['mi_historial']]
+    ]
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    mensaje = "📝 **Panel de Usuario**\n\n"
+    mensaje += f"📌 Cuestionario activo: {cuestionario.get('nombre', 'Sin nombre')}\n"
+    
+    if sesion:
+        mensaje += f"⏳ Tienes un cuestionario en progreso.\n"
+        mensaje += f"📊 Pregunta {sesion.get('pregunta_actual', 0) + 1} de {len(cuestionario.get('preguntas_ids', []))}\n"
+    
+    if update.callback_query:
+        await update.callback_query.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(mensaje, reply_markup=reply_markup, parse_mode='Markdown')
+
 
 # ============================================================
 # REGISTRAR HANDLERS
@@ -75,7 +161,7 @@ user_handlers = UserHandlers()
 
 async def iniciar_responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inicia el proceso de responder un cuestionario"""
-    context.user_data['conversation_state'] = True  # <--- AGREGADO
+    context.user_data['conversation_state'] = True
     user = update.effective_user
     user_id = user.id
     
@@ -208,6 +294,7 @@ async def mostrar_mi_historial(update: Update, context: ContextTypes.DEFAULT_TYP
 async def manejar_callback_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja callbacks de usuario"""
     query = update.callback_query
+    await query.answer()  # <--- AGREGADO: Esto evita el error
     data = query.data
     
     user_id = update.effective_user.id
@@ -244,8 +331,8 @@ async def manejar_callback_usuario(update: Update, context: ContextTypes.DEFAULT
             db.abandonar_sesion(sesion['id'])
         
         await query.edit_message_text("✅ Cuestionario cancelado.")
-        from src.bot import mostrar_panel_usuario
-        await mostrar_panel_usuario(update, context)
+        # Usar enviar_panel_usuario en lugar de mostrar_panel_usuario
+        await enviar_panel_usuario(update, context)
     
     elif data == 'resp_abierta':
         # El usuario quiere escribir una respuesta abierta
@@ -511,7 +598,7 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
 async def cancelar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela la respuesta abierta y vuelve al menú"""
     user_id = update.effective_user.id
-    context.user_data.pop('conversation_state', None)  # <--- AGREGADO
+    context.user_data.pop('conversation_state', None)
     
     # Abandonar sesión si existe
     sesion = db.obtener_sesion_activa(user_id)
@@ -525,19 +612,8 @@ async def cancelar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode='Markdown'
     )
     
-    from src.bot import mostrar_panel_usuario
-    await mostrar_panel_usuario(update, context)
+    await enviar_panel_usuario(update, context)
     return ConversationHandler.END
-
-
-# ============================================================
-# FUNCIÓN AUXILIAR PARA MOSTRAR PANEL DE USUARIO
-# ============================================================
-
-async def mostrar_panel_usuario_local(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra el panel de usuario (wrapper para evitar importación circular)"""
-    from src.bot import mostrar_panel_usuario
-    await mostrar_panel_usuario(update, context)
 
 
 # ============================================================
