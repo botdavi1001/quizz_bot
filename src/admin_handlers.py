@@ -1358,8 +1358,12 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # GESTIONAR - DESCARGAR Y SUBIR CSV (REEMPLAZO TOTAL)
 # ============================================================
 
+# ============================================================
+# ELIMINAR PREGUNTA - DESCARGAR CSV Y ELIMINAR POR NÚMERO
+# ============================================================
+
 async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra el panel de gestión con opciones para exportar/importar CSV"""
+    """Muestra el panel para eliminar preguntas con instrucciones y envía CSV"""
     user_id = update.effective_user.id
     admin = db.obtener_admin(user_id)
     
@@ -1367,26 +1371,204 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
         return
     
-    keyboard = [
-        [InlineKeyboardButton("📥 Descargar CSV (exportar)", callback_data="gestion_exportar")],
-        [InlineKeyboardButton("📤 Subir CSV (reemplazar todas)", callback_data="gestion_importar")],
-        [InlineKeyboardButton("❌ Cerrar", callback_data="gestion_cerrar")]
-    ]
+    # Obtener preguntas
+    preguntas = db.obtener_preguntas(admin['id'])
     
-    total_preguntas = db.contar_preguntas(admin['id'])
+    if not preguntas:
+        await update.message.reply_text(
+            "📭 No hay preguntas para eliminar.\n\n"
+            "Primero crea algunas preguntas.",
+            parse_mode='Markdown'
+        )
+        return
     
-    mensaje = f"🗑️ **Gestión de preguntas**\n\n"
-    mensaje += f"📝 Total de preguntas: {total_preguntas}\n\n"
-    mensaje += "**📥 Descargar CSV:** Exporta todas las preguntas en un archivo CSV para editarlas.\n\n"
-    mensaje += "**📤 Subir CSV (reemplazar):** Sube un archivo CSV que **REEMPLAZARÁ** todas las preguntas existentes.\n\n"
-    mensaje += "⚠️ **ATENCIÓN:** La opción 'Subir CSV' **eliminará** todas las preguntas actuales y las reemplazará con las del archivo."
+    # Guardar preguntas en estado
+    admin_estado[user_id] = {
+        'preguntas': preguntas,
+        'modo': 'eliminar'
+    }
     
-    await update.message.reply_text(
-        mensaje,
-        reply_markup=InlineKeyboardMarkup(keyboard),
+    # Generar CSV con números
+    import csv
+    import io
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Encabezados
+    writer.writerow([
+        'numero',
+        'pregunta',
+        'tipo',
+        'opciones',
+        'correctas',
+        'tiempo',
+        'imagen_url',
+        'video_url',
+        'enlace'
+    ])
+    
+    for i, p in enumerate(preguntas, 1):
+        opciones = ';'.join(p.get('opciones', [])) if p.get('opciones') else ''
+        correctas = ','.join(str(c + 1) for c in p.get('respuestas_correctas', [])) if p.get('respuestas_correctas') else ''
+        
+        writer.writerow([
+            i,
+            p.get('texto', ''),
+            p.get('tipo', 'multiple'),
+            opciones,
+            correctas,
+            p.get('tiempo_segundos', 30),
+            p.get('imagen_url', ''),
+            p.get('video_url', ''),
+            p.get('enlace_url', '')
+        ])
+    
+    csv_content = output.getvalue().encode('utf-8')
+    
+    # Enviar CSV con las instrucciones
+    await update.message.reply_document(
+        document=io.BytesIO(csv_content),
+        filename=f"preguntas_para_eliminar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        caption="📥 **Lista de preguntas con números**\n\n"
+                "Usa este archivo para saber qué número tiene cada pregunta.\n\n"
+                "**Para eliminar, escribe los números de las preguntas:**\n"
+                "• Números individuales: `1,3,5,7`\n"
+                "• Rangos: `10-20`\n"
+                "• Combinación: `1,3,5-10,15`\n"
+                "• Todas: `todos`\n\n"
+                "Ejemplo: `1,3,5-10,15`\n\n"
+                "Escribe 'cancelar' para salir.",
         parse_mode='Markdown'
     )
+    
+    # Instrucciones en texto
+    mensaje = f"🗑️ **Eliminar preguntas**\n\n"
+    mensaje += f"📝 Total de preguntas: {len(preguntas)}\n\n"
+    mensaje += "Ya envié el CSV con todas las preguntas y sus números.\n\n"
+    mensaje += "**Escribe los números de las preguntas a eliminar:**\n"
+    mensaje += "• `1,3,5,7` → elimina las preguntas 1, 3, 5 y 7\n"
+    mensaje += "• `10-20` → elimina las preguntas 10 a 20\n"
+    mensaje += "• `1,3,5-10,15` → combinación\n"
+    mensaje += "• `todos` → elimina TODAS las preguntas\n\n"
+    mensaje += "Escribe 'cancelar' para salir."
+    
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+    return ESPERANDO_ELIMINAR_PREGUNTA
 
+
+async def recibir_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recibe los números de las preguntas a eliminar"""
+    texto = update.message.text.strip()
+    user_id = update.effective_user.id
+    estado = admin_estado.get(user_id, {})
+    
+    if texto.lower() == 'cancelar':
+        admin_estado.pop(user_id, None)
+        await update.message.reply_text("✅ Eliminación cancelada.", parse_mode='Markdown')
+        await enviar_panel_admin(update, context)
+        return ConversationHandler.END
+    
+    preguntas = estado.get('preguntas', [])
+    if not preguntas:
+        await update.message.reply_text("❌ No hay preguntas disponibles.", parse_mode='Markdown')
+        await enviar_panel_admin(update, context)
+        return ConversationHandler.END
+    
+    # Parsear la selección
+    indices_a_eliminar = set()
+    
+    if texto.lower() == 'todos':
+        # Eliminar TODAS las preguntas
+        indices_a_eliminar = set(range(len(preguntas)))
+    else:
+        # Parsear números y rangos
+        partes = texto.split(',')
+        for parte in partes:
+            parte = parte.strip()
+            if '-' in parte:
+                # Rango: 5-10
+                inicio, fin = parte.split('-')
+                try:
+                    inicio = int(inicio) - 1
+                    fin = int(fin) - 1
+                    for i in range(inicio, fin + 1):
+                        if 0 <= i < len(preguntas):
+                            indices_a_eliminar.add(i)
+                except:
+                    pass
+            else:
+                # Número individual
+                try:
+                    num = int(parte) - 1
+                    if 0 <= num < len(preguntas):
+                        indices_a_eliminar.add(num)
+                except:
+                    pass
+    
+    if not indices_a_eliminar:
+        await update.message.reply_text(
+            "❌ No seleccionaste ninguna pregunta válida.\n\n"
+            "Usa el formato correcto: `1,3,5-10,15` o `todos`\n"
+            "Los números deben estar entre 1 y {len(preguntas)}.",
+            parse_mode='Markdown'
+        )
+        return ESPERANDO_ELIMINAR_PREGUNTA
+    
+    # Confirmar eliminación
+    preguntas_a_eliminar = [preguntas[i] for i in sorted(indices_a_eliminar)]
+    
+    mensaje = f"⚠️ **¿Eliminar {len(preguntas_a_eliminar)} preguntas?**\n\n"
+    for i, p in enumerate(preguntas_a_eliminar[:5], 1):
+        texto = p.get('texto', '')[:50]
+        mensaje += f"{i}. {texto}...\n"
+    if len(preguntas_a_eliminar) > 5:
+        mensaje += f"\n... y {len(preguntas_a_eliminar) - 5} más.\n"
+    
+    mensaje += f"\nEsta acción **no se puede deshacer**.\n"
+    mensaje += "Escribe **SI** (en mayúsculas) para confirmar, o 'cancelar' para salir."
+    
+    admin_estado[user_id]['eliminar_lista'] = [p['id'] for p in preguntas_a_eliminar]
+    admin_estado[user_id]['modo'] = 'confirmar_eliminacion'
+    
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+    return ESPERANDO_ELIMINAR_PREGUNTA
+
+
+async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirma la eliminación de las preguntas seleccionadas"""
+    texto = update.message.text.strip()
+    user_id = update.effective_user.id
+    estado = admin_estado.get(user_id, {})
+    
+    if texto.lower() == 'cancelar':
+        admin_estado.pop(user_id, None)
+        await update.message.reply_text("✅ Eliminación cancelada.", parse_mode='Markdown')
+        await enviar_panel_admin(update, context)
+        return ConversationHandler.END
+    
+    if texto.upper() != 'SI':
+        await update.message.reply_text(
+            "❌ Escribe **SI** para confirmar o 'cancelar' para salir.",
+            parse_mode='Markdown'
+        )
+        return ESPERANDO_ELIMINAR_PREGUNTA
+    
+    # Eliminar preguntas
+    ids_eliminar = estado.get('eliminar_lista', [])
+    eliminadas = 0
+    for pid in ids_eliminar:
+        if db.eliminar_pregunta(pid):
+            eliminadas += 1
+    
+    admin_estado.pop(user_id, None)
+    
+    await update.message.reply_text(
+        f"✅ Se eliminaron {eliminadas} preguntas correctamente.",
+        parse_mode='Markdown'
+    )
+    await enviar_panel_admin(update, context)
+    return ConversationHandler.END
 
 async def manejar_callback_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los callbacks de gestión"""
@@ -1577,6 +1759,29 @@ def registrar_handlers(application, group=1):
     
     application.add_handler(crear_conv, group=group)
     application.add_handler(lanzar_conv, group=group)
+
+    # ============================================================
+    # CONVERSACIÓN: ELIMINAR PREGUNTAS
+    # ============================================================
+
+    gestion_conv = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), mostrar_gestion)
+        ],
+        states={
+            ESPERANDO_ELIMINAR_PREGUNTA: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_eliminar_pregunta),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, confirmar_eliminar_pregunta),
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancelar", cancelar_conversacion)
+        ],
+        allow_reentry=True,
+        per_message=False,
+    )
+
+    application.add_handler(gestion_conv, group=group)
     
     # ============================================================
     # HANDLERS SIMPLES (sin conversación)
@@ -1611,14 +1816,6 @@ def registrar_handlers(application, group=1):
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["configurar"]}$'), 
             mostrar_config
-        )
-    )
-    
-    # Gestionar
-    application.add_handler(
-        MessageHandler(
-            filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), 
-            mostrar_gestion
         )
     )
     
