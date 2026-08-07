@@ -755,7 +755,7 @@ async def recibir_limpieza_historial(update: Update, context: ContextTypes.DEFAU
 
 
 # ============================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN - SIMPLIFICADA
 # ============================================================
 
 async def mostrar_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -771,11 +771,7 @@ async def mostrar_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Extraer valores con defaults
     notificar = config_actual.get('notificar_admin', True)
-    tiempo = config_actual.get('tiempo_global_default', 30)
-    mostrar_correctas = config_actual.get('mostrar_correctas', True)
-    reintentos = config_actual.get('reintentos_default', 3)
     formato = config_actual.get('formato_reporte', 'resumido')
-    tolerancia = config_actual.get('tolerancia_abiertas', 80)
     
     keyboard = [
         [InlineKeyboardButton(
@@ -783,24 +779,8 @@ async def mostrar_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
             callback_data="config_notificar"
         )],
         [InlineKeyboardButton(
-            f"⏱️ Tiempo global: {tiempo}s", 
-            callback_data="config_tiempo"
-        )],
-        [InlineKeyboardButton(
-            f"🎯 Mostrar correctas: {'✅' if mostrar_correctas else '❌'}", 
-            callback_data="config_mostrar"
-        )],
-        [InlineKeyboardButton(
-            f"🔄 Reintentos: {reintentos}", 
-            callback_data="config_reintentos"
-        )],
-        [InlineKeyboardButton(
             f"📊 Formato reporte: {formato}", 
             callback_data="config_formato"
-        )],
-        [InlineKeyboardButton(
-            f"📏 Tolerancia abiertas: {tolerancia}%", 
-            callback_data="config_tolerancia"
         )],
         [InlineKeyboardButton("❌ Cerrar", callback_data="config_cerrar")]
     ]
@@ -839,15 +819,7 @@ async def manejar_callback_config(update: Update, context: ContextTypes.DEFAULT_
         config_actual['notificar_admin'] = nuevo_valor
         db.actualizar_config_admin(user_id, config_actual)
         await query.edit_message_text(f"✅ Notificaciones: {'Activadas' if nuevo_valor else 'Desactivadas'}")
-        await mostrar_config(update, context)
-        return
-    
-    if data == 'config_mostrar':
-        nuevo_valor = not config_actual.get('mostrar_correctas', True)
-        config_actual['mostrar_correctas'] = nuevo_valor
-        db.actualizar_config_admin(user_id, config_actual)
-        await query.edit_message_text(f"✅ Mostrar correctas: {'Activado' if nuevo_valor else 'Desactivado'}")
-        await mostrar_config(update, context)
+        await enviar_panel_admin(update, context)
         return
     
     if data == 'config_formato':
@@ -855,83 +827,8 @@ async def manejar_callback_config(update: Update, context: ContextTypes.DEFAULT_
         config_actual['formato_reporte'] = nuevo_formato
         db.actualizar_config_admin(user_id, config_actual)
         await query.edit_message_text(f"✅ Formato de reporte: {nuevo_formato}")
-        await mostrar_config(update, context)
+        await enviar_panel_admin(update, context)
         return
-    
-    if data in ['config_tiempo', 'config_reintentos', 'config_tolerancia']:
-        admin_estado[user_id] = {'config_tipo': data}
-        
-        if data == 'config_tiempo':
-            await query.edit_message_text(
-                "⏱️ **Configurar tiempo global**\n\n"
-                "Escribe el tiempo en segundos (ej: 30):",
-                parse_mode='Markdown'
-            )
-        elif data == 'config_reintentos':
-            await query.edit_message_text(
-                "🔄 **Configurar reintentos**\n\n"
-                "Escribe el número de reintentos permitidos (0 = sin límite):",
-                parse_mode='Markdown'
-            )
-        elif data == 'config_tolerancia':
-            await query.edit_message_text(
-                "📏 **Configurar tolerancia para abiertas**\n\n"
-                "Escribe la tolerancia (0-100):\n"
-                "Ej: 80 significa que el texto debe coincidir al menos en un 80%",
-                parse_mode='Markdown'
-            )
-        return ESPERANDO_CONFIGURACION
-
-
-async def recibir_config_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Recibe el valor para configurar tiempo, reintentos o tolerancia"""
-    texto = update.message.text.strip()
-    user_id = update.effective_user.id
-    estado = admin_estado.get(user_id, {})
-    
-    config_tipo = estado.get('config_tipo')
-    if not config_tipo:
-        return
-    
-    admin = db.obtener_admin(user_id)
-    if not admin:
-        await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
-        return ConversationHandler.END
-    
-    config_actual = admin.get('config', {})
-    
-    try:
-        valor = int(texto)
-        
-        if config_tipo == 'config_tiempo':
-            if valor < 0:
-                await update.message.reply_text("❌ El tiempo no puede ser negativo. Escribe un número válido:", parse_mode='Markdown')
-                return ESPERANDO_CONFIGURACION
-            config_actual['tiempo_global_default'] = valor
-            await update.message.reply_text(f"✅ Tiempo global configurado a {valor} segundos.", parse_mode='Markdown')
-        
-        elif config_tipo == 'config_reintentos':
-            if valor < 0:
-                await update.message.reply_text("❌ Los reintentos no pueden ser negativos. Escribe un número válido:", parse_mode='Markdown')
-                return ESPERANDO_CONFIGURACION
-            config_actual['reintentos_default'] = valor
-            await update.message.reply_text(f"✅ Reintentos configurados a {valor}.", parse_mode='Markdown')
-        
-        elif config_tipo == 'config_tolerancia':
-            if valor < 0 or valor > 100:
-                await update.message.reply_text("❌ La tolerancia debe estar entre 0 y 100. Escribe un número válido:", parse_mode='Markdown')
-                return ESPERANDO_CONFIGURACION
-            config_actual['tolerancia_abiertas'] = valor
-            await update.message.reply_text(f"✅ Tolerancia configurada a {valor}%.", parse_mode='Markdown')
-        
-        db.actualizar_config_admin(user_id, config_actual)
-        admin_estado.pop(user_id, None)
-        await mostrar_config(update, context)
-        return ConversationHandler.END
-        
-    except ValueError:
-        await update.message.reply_text("❌ Escribe un número válido.", parse_mode='Markdown')
-        return ESPERANDO_CONFIGURACION
 
 
 # ============================================================
@@ -1499,26 +1396,8 @@ def registrar_handlers(application, group=1):
         per_message=False,
     )
     
-    # Conversación: Configurar
-    config_conv = ConversationHandler(
-        entry_points=[
-            MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["configurar"]}$'), mostrar_config)
-        ],
-        states={
-            ESPERANDO_CONFIGURACION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_config_texto)
-            ]
-        },
-        fallbacks=[
-            CommandHandler("cancelar", cancelar_conversacion)
-        ],
-        allow_reentry=True,
-        per_message=False,
-    )
-    
     application.add_handler(crear_conv, group=group)
     application.add_handler(lanzar_conv, group=group)
-    application.add_handler(config_conv, group=group)
     
     # ============================================================
     # HANDLERS SIMPLES (sin conversación)
@@ -1542,6 +1421,14 @@ def registrar_handlers(application, group=1):
         MessageHandler(
             filters.Regex(f'^{config.BOTON_ADMIN["historial"]}$'), 
             mostrar_historial
+        )
+    )
+    
+    # Configurar - sin ConversationHandler
+    application.add_handler(
+        MessageHandler(
+            filters.Regex(f'^{config.BOTON_ADMIN["configurar"]}$'), 
+            mostrar_config
         )
     )
     
