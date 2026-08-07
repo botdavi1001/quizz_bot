@@ -1532,7 +1532,41 @@ async def recibir_eliminar_pregunta(update: Update, context: ContextTypes.DEFAUL
     admin_estado[user_id]['modo'] = 'confirmar_eliminacion'
     
     await update.message.reply_text(mensaje, parse_mode='Markdown')
-    return ESPERANDO_ELIMINAR_PREGUNTA
+    return CONFIRMAR_ELIMINACION 
+
+async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirma la eliminación de las preguntas seleccionadas"""
+    texto = update.message.text.strip()
+    user_id = update.effective_user.id
+    estado = admin_estado.get(user_id, {})
+    
+    if texto.lower() == 'cancelar':
+        admin_estado.pop(user_id, None)
+        await update.message.reply_text("✅ Eliminación cancelada.", parse_mode='Markdown')
+        await enviar_panel_admin(update, context)
+        return ConversationHandler.END
+    
+    if texto.upper() == 'SI':
+        # Eliminar preguntas
+        ids_eliminar = estado.get('eliminar_lista', [])
+        eliminadas = 0
+        for pid in ids_eliminar:
+            if db.eliminar_pregunta(pid):
+                eliminadas += 1
+        
+        admin_estado.pop(user_id, None)
+        await update.message.reply_text(
+            f"✅ Se eliminaron {eliminadas} preguntas correctamente.",
+            parse_mode='Markdown'
+        )
+        await enviar_panel_admin(update, context)
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text(
+            "❌ Escribe **SI** para confirmar o 'cancelar' para salir.",
+            parse_mode='Markdown'
+        )
+        return CONFIRMAR_ELIMINACION    
 
 
 async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1766,11 +1800,13 @@ def registrar_handlers(application, group=1):
 
     gestion_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), mostrar_gestion)
+            MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["eliminar pregunta"]}$'), mostrar_gestion)
         ],
         states={
             ESPERANDO_ELIMINAR_PREGUNTA: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_eliminar_pregunta),
+            ],
+            CONFIRMAR_ELIMINACION: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, confirmar_eliminar_pregunta),
             ],
         },
