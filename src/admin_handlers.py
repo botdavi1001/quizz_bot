@@ -538,6 +538,10 @@ async def recibir_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Recibe y procesa el archivo CSV"""
     user_id = update.effective_user.id
     estado = admin_estado.get(user_id, {})
+
+     # Si es un archivo de gestión (reemplazo), ignorar aquí
+    if estado.get('modo') == 'reemplazar_csv':
+        return
     
     if not estado.get('esperando_csv'):
         return
@@ -1301,8 +1305,12 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # GESTIONAR - DESCARGAR CSV DE TODAS LAS PREGUNTAS
 # ============================================================
 
+# ============================================================
+# GESTIONAR - DESCARGAR Y SUBIR CSV (REEMPLAZO TOTAL)
+# ============================================================
+
 async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Descarga un CSV con todas las preguntas para que el admin lo edite"""
+    """Muestra el panel de gestión con opciones para exportar/importar CSV"""
     user_id = update.effective_user.id
     admin = db.obtener_admin(user_id)
     
@@ -1310,73 +1318,215 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
         return
     
-    # Obtener todas las preguntas del admin
-    preguntas = db.obtener_preguntas(admin['id'])
+    keyboard = [
+        [InlineKeyboardButton("📥 Descargar CSV (exportar)", callback_data="gestion_exportar")],
+        [InlineKeyboardButton("📤 Subir CSV (reemplazar todas)", callback_data="gestion_importar")],
+        [InlineKeyboardButton("❌ Cerrar", callback_data="gestion_cerrar")]
+    ]
     
-    if not preguntas:
-        await update.message.reply_text(
-            "📭 No hay preguntas para exportar.\n\n"
-            "Primero crea algunas preguntas.",
-            parse_mode='Markdown'
-        )
-        return
+    total_preguntas = db.contar_preguntas(admin['id'])
     
-    # Generar CSV
-    import csv
-    import io
+    mensaje = f"🗑️ **Gestión de preguntas**\n\n"
+    mensaje += f"📝 Total de preguntas: {total_preguntas}\n\n"
+    mensaje += "**📥 Descargar CSV:** Exporta todas las preguntas en un archivo CSV para editarlas.\n\n"
+    mensaje += "**📤 Subir CSV (reemplazar):** Sube un archivo CSV que **REEMPLAZARÁ** todas las preguntas existentes.\n\n"
+    mensaje += "⚠️ **ATENCIÓN:** La opción 'Subir CSV' **eliminará** todas las preguntas actuales y las reemplazará con las del archivo."
     
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # Encabezados
-    writer.writerow([
-        'pregunta',
-        'tipo',
-        'opciones',
-        'correctas',
-        'tiempo',
-        'imagen_url',
-        'video_url',
-        'enlace'
-    ])
-    
-    # Datos
-    for p in preguntas:
-        opciones = ';'.join(p.get('opciones', [])) if p.get('opciones') else ''
-        correctas = ','.join(str(c) for c in p.get('respuestas_correctas', [])) if p.get('respuestas_correctas') else ''
-        
-        writer.writerow([
-            p.get('texto', ''),
-            p.get('tipo', 'multiple'),
-            opciones,
-            correctas,
-            p.get('tiempo_segundos', 30),
-            p.get('imagen_url', ''),
-            p.get('video_url', ''),
-            p.get('enlace_url', '')
-        ])
-    
-    csv_content = output.getvalue().encode('utf-8')
-    
-    # Enviar archivo
-    import io as io_bytes
-    
-    await update.message.reply_document(
-        document=io_bytes.BytesIO(csv_content),
-        filename="preguntas_exportadas.csv",
-        caption=f"📥 **Exportación de preguntas**\n\n"
-                f"📝 Total: {len(preguntas)} preguntas\n\n"
-                "Puedes editar este archivo y luego subirlo con **📂 Subir CSV**.\n\n"
-                "**Columnas:**\n"
-                "• `pregunta`: El texto de la pregunta\n"
-                "• `tipo`: multiple, vf o abierta\n"
-                "• `opciones`: Separadas por ;\n"
-                "• `correctas`: Números separados por coma (0=ninguna)\n"
-                "• `tiempo`: Segundos (0=sin límite)\n"
-                "• `imagen_url`, `video_url`, `enlace`: Opcionales",
+    await update.message.reply_text(
+        mensaje,
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
 
+
+async def manejar_callback_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja los callbacks de gestión"""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user_id = update.effective_user.id
+    
+    admin = db.obtener_admin(user_id)
+    if not admin:
+        await query.edit_message_text("❌ No eres admin.", parse_mode='Markdown')
+        return
+    
+    if data == 'gestion_cerrar':
+        await query.edit_message_text("✅ Gestión cerrada.")
+        await enviar_panel_admin(update, context)
+        return
+    
+    if data == 'gestion_exportar':
+        # === EXPORTAR CSV ===
+        preguntas = db.obtener_preguntas(admin['id'])
+        
+        if not preguntas:
+            await query.edit_message_text(
+                "📭 No hay preguntas para exportar.\n\n"
+                "Primero crea algunas preguntas.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Generar CSV
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        writer.writerow([
+            'pregunta',
+            'tipo',
+            'opciones',
+            'correctas',
+            'tiempo',
+            'imagen_url',
+            'video_url',
+            'enlace'
+        ])
+        
+        for p in preguntas:
+            opciones = ';'.join(p.get('opciones', [])) if p.get('opciones') else ''
+            correctas = ','.join(str(c) for c in p.get('respuestas_correctas', [])) if p.get('respuestas_correctas') else ''
+            
+            writer.writerow([
+                p.get('texto', ''),
+                p.get('tipo', 'multiple'),
+                opciones,
+                correctas,
+                p.get('tiempo_segundos', 30),
+                p.get('imagen_url', ''),
+                p.get('video_url', ''),
+                p.get('enlace_url', '')
+            ])
+        
+        csv_content = output.getvalue().encode('utf-8')
+        
+        await query.message.reply_document(
+            document=io.BytesIO(csv_content),
+            filename=f"preguntas_exportadas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            caption=f"📥 **Exportación de preguntas**\n\n"
+                    f"📝 Total: {len(preguntas)} preguntas\n\n"
+                    "Edita este archivo y luego usa '📤 Subir CSV (reemplazar)' para actualizar todas las preguntas.",
+            parse_mode='Markdown'
+        )
+        
+        await query.edit_message_text("✅ Archivo CSV enviado. Puedes editarlo y luego usar 'Subir CSV (reemplazar)'.")
+        return
+    
+    if data == 'gestion_importar':
+        # === PREPARAR PARA SUBIR CSV (REEMPLAZO) ===
+        admin_estado[user_id] = {
+            'admin_id': admin['id'],
+            'modo': 'reemplazar_csv'
+        }
+        
+        await query.edit_message_text(
+            "📤 **Subir CSV (reemplazar todas las preguntas)**\n\n"
+            "⚠️ **ATENCIÓN:** Este proceso **ELIMINARÁ** TODAS las preguntas existentes y las reemplazará con las del archivo.\n\n"
+            "**Formato requerido:**\n"
+            "• `pregunta`: El texto de la pregunta (obligatorio)\n"
+            "• `tipo`: `multiple`, `vf` o `abierta` (obligatorio)\n"
+            "• `opciones`: Separadas por `;`\n"
+            "• `correctas`: Números separados por coma (ej: `1` o `1,3`), o `V`/`F`\n"
+            "• `tiempo`: Segundos (0 = sin límite)\n"
+            "• `imagen_url`, `video_url`, `enlace`: Opcionales\n\n"
+            "**Sube tu archivo CSV cuando estés listo.**\n"
+            "O escribe 'cancelar' para salir.",
+            parse_mode='Markdown'
+        )
+        admin_estado[user_id]['esperando_csv'] = True
+        return ESPERANDO_CSV
+
+
+async def recibir_csv_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recibe y procesa el archivo CSV - REEMPLAZA TODAS LAS PREGUNTAS"""
+    user_id = update.effective_user.id
+    estado = admin_estado.get(user_id, {})
+
+    # Si el usuario escribe cancelar
+    if update.message.text and update.message.text.lower() == 'cancelar':
+        admin_estado.pop(user_id, None)
+        await update.message.reply_text("✅ Operación cancelada.", parse_mode='Markdown')
+        await enviar_panel_admin(update, context)
+        return ConversationHandler.END
+    
+    if not estado.get('esperando_csv') or estado.get('modo') != 'reemplazar_csv':
+        return
+    
+    if not update.message.document:
+        await update.message.reply_text(
+            "❌ Por favor, sube un archivo CSV (no un mensaje de texto).",
+            parse_mode='Markdown'
+        )
+        return ESPERANDO_CSV
+    
+    documento = update.message.document
+    nombre_archivo = documento.file_name or ""
+    
+    if not nombre_archivo.lower().endswith('.csv'):
+        await update.message.reply_text(
+            "❌ El archivo debe tener extensión `.csv`.\n"
+            "Por favor, sube un archivo CSV válido.",
+            parse_mode='Markdown'
+        )
+        return ESPERANDO_CSV
+    
+    try:
+        archivo = await documento.get_file()
+        contenido = await archivo.download_as_bytearray()
+        
+        from src.csv_processor import procesar_csv
+        
+        admin_id = estado.get('admin_id')
+        
+        # === ELIMINAR TODAS LAS PREGUNTAS EXISTENTES ===
+        admin = db.obtener_admin(user_id)
+        if admin:
+            preguntas_existentes = db.obtener_preguntas(admin['id'])
+            eliminadas = 0
+            for p in preguntas_existentes:
+                if db.eliminar_pregunta(p['id']):
+                    eliminadas += 1
+            log_info(f"🗑️ Eliminadas {eliminadas} preguntas existentes antes de importar CSV")
+        
+        # === GUARDAR NUEVAS PREGUNTAS ===
+        exitosas, fallidas, errores = procesar_csv(bytes(contenido), admin_id)
+        
+        # Mostrar resultado
+        mensaje = f"📥 **Importación CSV - REEMPLAZO COMPLETO**\n\n"
+        mensaje += f"🗑️ Eliminadas: {eliminadas} preguntas antiguas\n"
+        mensaje += f"✅ Importadas: {exitosas} preguntas nuevas\n"
+        mensaje += f"❌ Fallidas: {fallidas}\n\n"
+        
+        if errores:
+            mensaje += "**Errores encontrados:**\n"
+            for num_fila, error in errores[:5]:
+                mensaje += f"• Fila {num_fila}: {error}\n"
+            if len(errores) > 5:
+                mensaje += f"\n... y {len(errores) - 5} errores más"
+        
+        if exitosas > 0:
+            mensaje += f"\n\n✅ {exitosas} preguntas guardadas correctamente."
+        elif fallidas > 0 and exitosas == 0:
+            mensaje += f"\n\n❌ No se guardó ninguna pregunta. Verifica el formato del archivo."
+        
+        await update.message.reply_text(mensaje, parse_mode='Markdown')
+        
+        admin_estado.pop(user_id, None)
+        
+        await enviar_panel_admin(update, context)
+        return ConversationHandler.END
+        
+    except Exception as e:
+        log_error(f"Error procesando CSV en gestion: {str(e)}")
+        await update.message.reply_text(
+            f"❌ Error al procesar el archivo: {str(e)[:200]}\n\n"
+            "Verifica que el archivo tenga el formato correcto.",
+            parse_mode='Markdown'
+        )
+        return ESPERANDO_CSV
 
 # ============================================================
 # RESPALDOS - EN DESARROLLO
@@ -1520,6 +1670,14 @@ def registrar_handlers(application, group=1):
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
             recibir_limpieza_historial
+        )
+    )
+
+    # Handler para recibir CSV desde Gestionar (reemplazo total)
+    application.add_handler(
+        MessageHandler(
+            filters.Document.ALL,
+            recibir_csv_gestion
         )
     )
 

@@ -33,7 +33,8 @@ from src.admin_handlers import (
     iniciar_lanzar,
     mostrar_gestion,
     mostrar_respaldos,
-    manejar_callback_historial
+    manejar_callback_historial,
+    manejar_callback_gestion  # <--- AGREGAR ESTA LÍNEA
 )
 
 # ============================================================
