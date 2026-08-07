@@ -32,7 +32,6 @@ from src.admin_handlers import (
     mostrar_config,
     iniciar_lanzar,
     mostrar_gestion,
-    mostrar_respaldos,
     manejar_callback_historial
 )
 
@@ -97,7 +96,6 @@ async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
         [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
         [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
         [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
-        [config.BOTON_ADMIN['respaldos']]
     ]
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -272,8 +270,6 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await iniciar_lanzar(update, context)
         elif text == config.BOTON_ADMIN['gestionar']:
             await mostrar_gestion(update, context)
-        elif text == config.BOTON_ADMIN['respaldos']:
-            await mostrar_respaldos(update, context)
         # NOTA: NO se muestra ningún mensaje de error para mensajes no reconocidos
     else:
         from src.user_handlers import user_handlers
