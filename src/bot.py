@@ -96,6 +96,7 @@ async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
         [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
         [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
         [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
+        [config.BOTON_ADMIN['modo_usuario']]  # <--- AGREGADO
     ]
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -164,6 +165,10 @@ async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TY
         [config.BOTON_USUARIO['responder']],
         [config.BOTON_USUARIO['mi_historial']]
     ]
+    
+    # Si es admin, agregar botón para volver
+    if es_admin(update):
+        keyboard.append([InlineKeyboardButton("👑 Volver a admin", callback_data="user_volver_admin")])
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -270,6 +275,9 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await iniciar_lanzar(update, context)
         elif text == config.BOTON_ADMIN['gestionar']:
             await mostrar_gestion(update, context)
+        elif text == config.BOTON_ADMIN['modo_usuario']:
+            # Cambiar a modo usuario
+            await mostrar_panel_usuario(update, context)
         # NOTA: NO se muestra ningún mensaje de error para mensajes no reconocidos
     else:
         from src.user_handlers import user_handlers
@@ -351,12 +359,6 @@ def configurar_bot() -> Application:
         if data.startswith('user_'):
             from src.user_handlers import user_handlers
             await user_handlers.manejar_callback_usuario(update, context)
-            return
-
-        # Callbacks de gestión
-        if data.startswith('gestion_'):
-            from src.admin_handlers import manejar_callback_gestion
-            await manejar_callback_gestion(update, context)
             return
         
         # Respuestas a preguntas

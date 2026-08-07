@@ -45,6 +45,7 @@ async def enviar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
         [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
         [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
+        [config.BOTON_ADMIN['modo_usuario']]  # <--- AGREGADO
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -1566,6 +1567,7 @@ async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFA
         )
         return CONFIRMAR_ELIMINACION
 
+
 # ============================================================
 # REGISTRAR HANDLERS
 # ============================================================
@@ -1702,7 +1704,6 @@ def registrar_handlers(application, group=1):
             mostrar_config
         )
     )
-
     
     application.add_handler(
         MessageHandler(

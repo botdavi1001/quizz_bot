@@ -106,6 +106,11 @@ async def enviar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TYP
         [config.BOTON_USUARIO['mi_historial']]
     ]
     
+    # Si es admin, agregar botón para volver
+    admin = db.obtener_admin(update.effective_user.id)
+    if admin:
+        keyboard.append([InlineKeyboardButton("👑 Volver a admin", callback_data="user_volver_admin")])
+    
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     mensaje = "📝 **Panel de Usuario**\n\n"
@@ -342,6 +347,12 @@ async def manejar_callback_usuario(update: Update, context: ContextTypes.DEFAULT
             parse_mode='Markdown'
         )
         return ESPERANDO_RESPUESTA_ABIERTA_TEXTO
+    
+    elif data == 'user_volver_admin':
+        # Volver al panel de admin
+        await query.edit_message_text("✅ Volviendo al panel de admin...")
+        from src.bot import mostrar_panel_admin
+        await mostrar_panel_admin(update, context)
 
 # ============================================================
 # MANEJADORES DE RESPUESTAS
