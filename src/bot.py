@@ -166,9 +166,9 @@ async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TY
         [config.BOTON_USUARIO['mi_historial']]
     ]
     
-    # Si es admin, agregar botón para volver
+    # Si es admin, agregar botón para volver (usando el mismo texto que "Modo usuario")
     if es_admin(update):
-        keyboard.append([InlineKeyboardButton("👑 Volver a admin", callback_data="user_volver_admin")])
+        keyboard.append([config.BOTON_ADMIN['modo_usuario']])  # <--- CAMBIADO
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -260,9 +260,32 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return  # Ignorar el mensaje, la conversación lo manejará
     
     text = update.message.text
+    user_id = update.effective_user.id
     
-    if es_admin(update):
-        # Usar funciones importadas directamente
+    # Verificar si el admin está en "modo usuario"
+    es_admin_real = es_admin(update)
+    modo_usuario_activo = context.user_data.get('modo_usuario', False)
+    
+    # Si es admin pero está en modo usuario, comportarse como usuario
+    if es_admin_real and modo_usuario_activo:
+        # Comportamiento de usuario
+        from src.user_handlers import user_handlers
+        
+        if text == config.BOTON_USUARIO['responder']:
+            await user_handlers.iniciar_responder(update, context)
+        elif text == config.BOTON_USUARIO['mi_historial']:
+            await user_handlers.mostrar_mi_historial(update, context)
+        elif text == config.BOTON_ADMIN['modo_usuario']:
+            # Si presiona "👤 Modo usuario" estando ya en modo usuario, volver a admin
+            context.user_data['modo_usuario'] = False
+            await mostrar_panel_admin(update, context)
+        else:
+            # Si el admin en modo usuario escribe algo que no es un botón, ignorar
+            pass
+        return
+    
+    # Si es admin y NO está en modo usuario
+    if es_admin_real:
         if text == config.BOTON_ADMIN['crear']:
             await iniciar_crear(update, context)
         elif text == config.BOTON_ADMIN['csv']:
@@ -277,17 +300,19 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await mostrar_gestion(update, context)
         elif text == config.BOTON_ADMIN['modo_usuario']:
             # Cambiar a modo usuario
+            context.user_data['modo_usuario'] = True
             await mostrar_panel_usuario(update, context)
         # NOTA: NO se muestra ningún mensaje de error para mensajes no reconocidos
-    else:
-        from src.user_handlers import user_handlers
-        
-        if text == config.BOTON_USUARIO['responder']:
-            await user_handlers.iniciar_responder(update, context)
-        elif text == config.BOTON_USUARIO['mi_historial']:
-            await user_handlers.mostrar_mi_historial(update, context)
-        # NOTA: NO se muestra ningún mensaje de error para mensajes no reconocidos
-
+        return
+    
+    # Si NO es admin (usuario normal)
+    from src.user_handlers import user_handlers
+    
+    if text == config.BOTON_USUARIO['responder']:
+        await user_handlers.iniciar_responder(update, context)
+    elif text == config.BOTON_USUARIO['mi_historial']:
+        await user_handlers.mostrar_mi_historial(update, context)
+    # NOTA: NO se muestra ningún mensaje de error para mensajes no reconocidos
 
 # ============================================================
 # CONFIGURACIÓN DE LA APLICACIÓN
