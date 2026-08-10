@@ -168,7 +168,7 @@ async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TY
     
     # Si es admin, agregar botón para volver (usando el mismo texto que "Modo usuario")
     if es_admin(update):
-        keyboard.append([config.BOTON_ADMIN['modo_usuario']])  # <--- CAMBIADO
+        keyboard.append([config.BOTON_ADMIN['modo_admin']]) 
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -274,8 +274,8 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await user_handlers.iniciar_responder(update, context)
         elif text == config.BOTON_USUARIO['mi_historial']:
             await user_handlers.mostrar_mi_historial(update, context)
-        elif text == config.BOTON_ADMIN['modo_usuario']:
-            # Si presiona "👤 Modo usuario" estando ya en modo usuario, volver a admin
+        elif text == config.BOTON_ADMIN['modo_admin']:
+            # Si presiona "👑 Modo admin", volver al panel de admin
             context.user_data['modo_usuario'] = False
             await mostrar_panel_admin(update, context)
         else:

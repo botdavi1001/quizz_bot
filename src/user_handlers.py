@@ -109,7 +109,7 @@ async def enviar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TYP
     # Si es admin, agregar botón para volver (usando el mismo texto que "Modo usuario")
     admin = db.obtener_admin(update.effective_user.id)
     if admin:
-        keyboard.append([config.BOTON_ADMIN['modo_usuario']])  # <--- CAMBIADO
+        keyboard.append([config.BOTON_ADMIN['modo_admin']])
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     

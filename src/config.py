@@ -66,7 +66,8 @@ BOTON_ADMIN = {
     'configurar': '⚙️ Configurar',
     'lanzar': '🚀 Lanzar cuestionario',
     'gestionar': '🗑️ Eliminar pregunta',
-    'modo_usuario': '👤 Modo usuario'
+    'modo_usuario': '👤 Modo usuario',
+    'modo_admin': '👑 Modo admin'
 }
 
 BOTON_USUARIO = {
