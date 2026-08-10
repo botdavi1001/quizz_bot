@@ -454,7 +454,7 @@ async def manejar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Limpiar tiempo de contexto
         context.user_data.pop('tiempo_inicio', None)
         
-        # Mostrar feedback
+                # Mostrar feedback
         if es_correcta:
             feedback = "✅ ¡Correcto!"
         else:
@@ -474,11 +474,20 @@ async def manejar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Completar cuestionario
             await completar_cuestionario(update, context, sesion['id'])
         else:
-            # Mostrar siguiente pregunta
+            # OBTENER LA SESIÓN ACTUALIZADA
+            sesion_actualizada = db.obtener_sesion(sesion['id'])
+            if not sesion_actualizada:
+                await update.effective_message.reply_text(
+                    "❌ Error al obtener la sesión actualizada.",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            # Mostrar siguiente pregunta con la sesión actualizada
             await mostrar_pregunta(
                 update,
                 context,
-                sesion,
+                sesion_actualizada,  # <--- USAR LA SESIÓN ACTUALIZADA
                 preguntas[siguiente_idx],
                 siguiente_idx,
                 len(preguntas)
