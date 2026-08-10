@@ -219,11 +219,14 @@ class Database:
     # ============================================================
     
     def crear_cuestionario(self, admin_id: str, nombre: str, preguntas_ids: List[str], 
-                           seleccion_tipo: str, reintentos: int) -> Optional[str]:
-        """Crea un nuevo cuestionario y desactiva el anterior automáticamente"""
+                       seleccion_tipo: str, reintentos: int) -> Optional[str]:
+        """
+        Crea un nuevo cuestionario y desactiva TODOS los cuestionarios activos
+        (de cualquier admin), asegurando que solo haya uno activo.
+        """
         try:
-            # Desactivar todos los cuestionarios existentes
-            self.client.table('cuestionario').update({'activo': False}).eq('admin_id', admin_id).execute()
+            # Desactivar TODOS los cuestionarios activos (sin importar el admin)
+            self.client.table('cuestionario').update({'activo': False}).eq('activo', True).execute()
             
             # Crear nuevo cuestionario
             data = {
@@ -243,9 +246,17 @@ class Database:
             return None
     
     def obtener_cuestionario_activo(self) -> Optional[Dict]:
-        """Obtiene el cuestionario activo (solo puede haber uno)"""
+        """
+        Obtiene el cuestionario activo más reciente.
+        Si hay varios, devuelve el último creado (por fecha).
+        """
         try:
-            result = self.client.table('cuestionario').select('*').eq('activo', True).execute()
+            result = self.client.table('cuestionario').select('*') \
+                .eq('activo', True) \
+                .order('creado_en', desc=True) \
+                .limit(1) \
+                .execute()
+            
             if result.data:
                 return result.data[0]
             return None
