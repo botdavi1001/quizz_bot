@@ -81,14 +81,15 @@ class Database:
             self._handle_error(e, "registrar_admin")
             return False
     
-    def obtener_admin_id() -> Optional[int]:
-        """Obtiene el ID del admin registrado (el más reciente)"""
+    def obtener_admin(self, telegram_id: int) -> Optional[Dict]:
+        """Obtiene los datos de un admin por su ID de Telegram"""
         try:
-            result = db.client.table('admins').select('telegram_id').order('registrado_en', desc=True).limit(1).execute()
+            result = self.client.table('admins').select('*').eq('telegram_id', telegram_id).execute()
             if result.data:
-                return result.data[0]['telegram_id']
+                return result.data[0]
             return None
-        except:
+        except Exception as e:
+            self._handle_error(e, "obtener_admin")
             return None
     
     def obtener_config_admin(self, telegram_id: int) -> Dict:
@@ -218,13 +219,11 @@ class Database:
     # ============================================================
     
     def crear_cuestionario(self, admin_id: str, nombre: str, preguntas_ids: List[str], 
-                       seleccion_tipo: str, reintentos: int) -> Optional[str]:
-        """
-        Crea un nuevo cuestionario y desactiva TODOS los cuestionarios activos.
-        """
+                           seleccion_tipo: str, reintentos: int) -> Optional[str]:
+        """Crea un nuevo cuestionario y desactiva el anterior automáticamente"""
         try:
-            # Desactivar TODOS los cuestionarios activos (de cualquier admin)
-            self.client.table('cuestionario').update({'activo': False}).eq('activo', True).execute()
+            # Desactivar todos los cuestionarios existentes
+            self.client.table('cuestionario').update({'activo': False}).eq('admin_id', admin_id).execute()
             
             # Crear nuevo cuestionario
             data = {
@@ -244,17 +243,9 @@ class Database:
             return None
     
     def obtener_cuestionario_activo(self) -> Optional[Dict]:
-        """
-        Obtiene el cuestionario activo más reciente.
-        Si hay varios, devuelve el último creado (por fecha).
-        """
+        """Obtiene el cuestionario activo (solo puede haber uno)"""
         try:
-            result = self.client.table('cuestionario').select('*') \
-                .eq('activo', True) \
-                .order('creado_en', desc=True) \
-                .limit(1) \
-                .execute()
-            
+            result = self.client.table('cuestionario').select('*').eq('activo', True).execute()
             if result.data:
                 return result.data[0]
             return None
