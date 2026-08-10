@@ -96,7 +96,7 @@ async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
         [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
         [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
         [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
-        [config.BOTON_ADMIN['modo_usuario']]
+        [config.BOTON_ADMIN['modo_usuario']]  # <--- AGREGADO
     ]
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -108,11 +108,9 @@ async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
         total_preguntas = db.contar_preguntas(admin['id'])
         mensaje += f"📝 Total de preguntas: {total_preguntas}\n"
         
-        # Obtener el cuestionario activo MÁS RECIENTE
         cuestionario = db.obtener_cuestionario_activo()
         if cuestionario:
             mensaje += f"🚀 Cuestionario activo: {cuestionario.get('nombre', 'Sin nombre')}\n"
-            mensaje += f"   📅 Creado: {cuestionario.get('creado_en', 'Fecha desconocida')[:10]}\n"
         else:
             mensaje += "📭 No hay cuestionario activo\n"
         
