@@ -595,7 +595,7 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
         parse_mode='Markdown'
     )
     
-    # Pasar a la siguiente pregunta
+        # Pasar a la siguiente pregunta
     await asyncio.sleep(1)
     
     siguiente_idx = pregunta_idx + 1
@@ -603,10 +603,19 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
     if siguiente_idx >= len(preguntas):
         await completar_cuestionario(update, context, sesion['id'])
     else:
+        # OBTENER LA SESIÓN ACTUALIZADA
+        sesion_actualizada = db.obtener_sesion(sesion['id'])
+        if not sesion_actualizada:
+            await update.message.reply_text(
+                "❌ Error al obtener la sesión actualizada.",
+                parse_mode='Markdown'
+            )
+            return ConversationHandler.END
+        
         await mostrar_pregunta(
             update,
             context,
-            sesion,
+            sesion_actualizada,
             preguntas[siguiente_idx],
             siguiente_idx,
             len(preguntas)
