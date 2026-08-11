@@ -170,6 +170,10 @@ def crear_barra_progreso(tiempo_restante: int, tiempo_total: int) -> str:
     lleno = int((porcentaje / 100) * barra_len)
     vacio = barra_len - lleno
     
+    # Asegurar que lleno no sea negativo ni mayor que barra_len
+    lleno = max(0, min(lleno, barra_len))
+    vacio = barra_len - lleno
+    
     # Elegir color según el tiempo restante
     if porcentaje > 60:
         barra = "🟩" * lleno + "⬜" * vacio
@@ -213,6 +217,8 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
             mensaje += f"⏱️ Sin límite de tiempo\n\n"
         
         # Construir botones según tipo
+        keyboard = None
+        
         if tipo == 'multiple':
             opciones = pregunta.get('opciones', [])
             if not opciones:
@@ -222,42 +228,33 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
             keyboard = []
             for i, opcion in enumerate(opciones):
                 keyboard.append([InlineKeyboardButton(opcion, callback_data=f"resp_{i}")])
-            
-            # Botón para cancelar
             keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")])
-            
-            message = await update.effective_message.reply_text(
-                mensaje,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            keyboard = InlineKeyboardMarkup(keyboard)
         
         elif tipo == 'vf':
-            keyboard = [
+            keyboard = InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton("✅ Verdadero", callback_data="resp_v"),
                     InlineKeyboardButton("❌ Falso", callback_data="resp_f")
                 ],
                 [InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")]
-            ]
-            
-            message = await update.effective_message.reply_text(
-                mensaje,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            ])
         
         elif tipo == 'abierta':
-            keyboard = [
+            keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("📝 Escribir respuesta", callback_data="resp_abierta")],
                 [InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")]
-            ]
-            
-            message = await update.effective_message.reply_text(
-                mensaje + "\n✏️ Escribe tu respuesta en el siguiente mensaje.",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            ])
+        
+        # Guardar los botones en context.user_data para reusarlos
+        context.user_data['keyboard'] = keyboard
+        context.user_data['mensaje_base'] = mensaje
+        
+        message = await update.effective_message.reply_text(
+            mensaje,
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
         
         # Guardar estado del tiempo en context
         if tiempo > 0:
@@ -267,6 +264,7 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
             context.user_data['sesion_id'] = sesion.get('id')
             context.user_data['mensaje_id'] = message.message_id
             context.user_data['chat_id'] = update.effective_chat.id
+            context.user_data['tiempo_total'] = tiempo
             
             # Iniciar temporizador con barra de progreso
             asyncio.create_task(manejar_tiempo_con_barra(
@@ -283,11 +281,15 @@ async def manejar_tiempo_con_barra(update: Update, context: ContextTypes.DEFAULT
                                     mensaje_id: int):
     """
     Maneja el temporizador de una pregunta con barra de progreso.
-    Actualiza el mensaje cada segundo.
+    Actualiza el mensaje cada segundo manteniendo los botones.
     """
     chat_id = context.user_data.get('chat_id')
     if not chat_id:
         return
+    
+    # Obtener los botones guardados
+    keyboard = context.user_data.get('keyboard')
+    mensaje_base = context.user_data.get('mensaje_base', '')
     
     for segundos_restantes in range(tiempo_total, 0, -1):
         # Verificar que la sesión siga activa
@@ -307,38 +309,26 @@ async def manejar_tiempo_con_barra(update: Update, context: ContextTypes.DEFAULT
         try:
             barra = crear_barra_progreso(segundos_restantes, tiempo_total)
             
-            # Obtener el mensaje original y actualizar solo la barra
-            # Para simplificar, reemplazamos el mensaje completo
-            # Obtenemos el texto original sin la barra
-            # Como no guardamos el texto original, editamos el mensaje completo
-            mensaje_actual = await context.bot.edit_message_reply_markup(
+            # Reconstruir el mensaje completo con la nueva barra
+            # Reemplazar la línea de la barra en el mensaje base
+            lineas = mensaje_base.split('\n')
+            nuevas_lineas = []
+            for linea in lineas:
+                if '⏱️' in linea and '[' in linea and ']' in linea:
+                    nuevas_lineas.append(barra)
+                else:
+                    nuevas_lineas.append(linea)
+            
+            nuevo_texto = '\n'.join(nuevas_lineas)
+            
+            # Editar el mensaje manteniendo los botones
+            await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=mensaje_id,
-                reply_markup=None
+                text=nuevo_texto,
+                parse_mode='Markdown',
+                reply_markup=keyboard
             )
-            
-            # Extraer el texto original (sin la barra)
-            texto_original = mensaje_actual.text
-            if texto_original:
-                # Buscar la línea de la barra y reemplazarla
-                lineas = texto_original.split('\n')
-                nuevas_lineas = []
-                for linea in lineas:
-                    if '⏱️' in linea and '[' in linea and ']' in linea:
-                        nuevas_lineas.append(barra)
-                    else:
-                        nuevas_lineas.append(linea)
-                
-                nuevo_texto = '\n'.join(nuevas_lineas)
-                
-                # Editar el mensaje con la nueva barra
-                await context.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=mensaje_id,
-                    text=nuevo_texto,
-                    parse_mode='Markdown',
-                    reply_markup=mensaje_actual.reply_markup
-                )
                 
         except Exception as e:
             # Si falla la edición, no pasa nada, seguimos
