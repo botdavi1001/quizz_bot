@@ -143,6 +143,7 @@ def seleccionar_preguntas(preguntas: List[Dict], cantidad: int, tipo: str,
     else:  # 'azar' o default
         return [p['id'] for p in random.sample(preguntas, min(cantidad, len(preguntas)))]
 
+
 # ============================================================
 # MOSTRAR PREGUNTA
 # ============================================================
@@ -176,7 +177,7 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if tipo == 'multiple':
             opciones = pregunta.get('opciones', [])
             if not opciones:
-                await update.message.reply_text("❌ Error: La pregunta no tiene opciones")
+                await update.effective_message.reply_text("❌ Error: La pregunta no tiene opciones")
                 return
             
             keyboard = []
@@ -186,7 +187,7 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
             # Botón para cancelar
             keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")])
             
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 mensaje,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
@@ -201,7 +202,7 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 [InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")]
             ]
             
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 mensaje,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
@@ -213,7 +214,7 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 [InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")]
             ]
             
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 mensaje + "\n✏️ Escribe tu respuesta en el siguiente mensaje.",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
@@ -231,7 +232,7 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     except Exception as e:
         log_error(f"Error mostrando pregunta: {str(e)}")
-        await update.message.reply_text("❌ Error al mostrar la pregunta. Intenta de nuevo.")
+        await update.effective_message.reply_text("❌ Error al mostrar la pregunta. Intenta de nuevo.")
 
 
 async def manejar_tiempo(update: Update, context: ContextTypes.DEFAULT_TYPE, 
@@ -259,7 +260,7 @@ async def manejar_tiempo(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     # Notificar al usuario
     try:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             config.MENSAJE_TIEMPO_AGOTADO,
             parse_mode='Markdown'
         )
@@ -308,7 +309,7 @@ async def reiniciar_cuestionario(update: Update, context: ContextTypes.DEFAULT_T
         max_intentos = cuestionario.get('reintentos', config.REINTENTOS_DEFAULT)
         
         if intentos > max_intentos:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 config.MENSAJE_REINTENTOS_AGOTADOS,
                 parse_mode='Markdown'
             )
@@ -345,13 +346,13 @@ async def continuar_cuestionario(update: Update, context: ContextTypes.DEFAULT_T
     try:
         sesion = db.obtener_sesion(sesion_id)
         if not sesion:
-            await update.message.reply_text("❌ Sesión no encontrada.")
+            await update.effective_message.reply_text("❌ Sesión no encontrada.")
             return
         
         if not continuar:
             # Abandonar sesión
             db.abandonar_sesion(sesion_id)
-            await update.message.reply_text("✅ Sesión descartada. Puedes empezar uno nuevo.")
+            await update.effective_message.reply_text("✅ Sesión descartada. Puedes empezar uno nuevo.")
             return
         
         # Continuar desde donde estaba
@@ -360,18 +361,18 @@ async def continuar_cuestionario(update: Update, context: ContextTypes.DEFAULT_T
         # Obtener cuestionario
         cuestionario = db.obtener_cuestionario(sesion.get('cuestionario_id'))
         if not cuestionario:
-            await update.message.reply_text("❌ Cuestionario no encontrado.")
+            await update.effective_message.reply_text("❌ Cuestionario no encontrado.")
             return
         
         # Obtener preguntas
         preguntas = obtener_preguntas_cuestionario(cuestionario['id'], cuestionario['admin_id'])
         if not preguntas:
-            await update.message.reply_text("❌ No se encontraron preguntas.")
+            await update.effective_message.reply_text("❌ No se encontraron preguntas.")
             return
         
         # Verificar si el cuestionario sigue activo
         if not cuestionario.get('activo', False):
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 config.MENSAJE_CUESTIONARIO_INACTIVO,
                 parse_mode='Markdown'
             )
@@ -462,13 +463,13 @@ async def completar_cuestionario(update: Update, context: ContextTypes.DEFAULT_T
             keyboard = [
                 [InlineKeyboardButton("📋 Ver respuestas correctas", callback_data="ver_correctas")]
             ]
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 mensaje,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
             )
         else:
-            await update.message.reply_text(mensaje, parse_mode='Markdown')
+            await update.effective_message.reply_text(mensaje, parse_mode='Markdown')
         
         # Limpiar datos del usuario
         context.user_data.clear()
@@ -485,7 +486,7 @@ async def mostrar_respuestas_correctas(update: Update, context: ContextTypes.DEF
     try:
         historial = db.obtener_detalle_historial(sesion_id)
         if not historial:
-            await update.message.reply_text("❌ No se encontraron respuestas.")
+            await update.effective_message.reply_text("❌ No se encontraron respuestas.")
             return
         
         mensaje = "📋 **Respuestas correctas**\n\n"
@@ -506,7 +507,7 @@ async def mostrar_respuestas_correctas(update: Update, context: ContextTypes.DEF
             mensaje += f"Tu respuesta: {respuesta}\n"
             mensaje += f"Estado: {icono}\n\n"
         
-        await update.message.reply_text(mensaje, parse_mode='Markdown')
+        await update.effective_message.reply_text(mensaje, parse_mode='Markdown')
         
     except Exception as e:
         log_error(f"Error mostrando respuestas correctas: {str(e)}")
@@ -546,6 +547,7 @@ def verificar_respuesta_abierta(respuesta_usuario: str, pregunta: Dict,
     )
     
     return es_correcta, False
+
 
 # ============================================================
 # FIN DE cuestionario.py
