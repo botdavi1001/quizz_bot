@@ -425,6 +425,34 @@ async def manejar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Verificar si es correcta
         correctas = pregunta.get('respuestas_correctas', [])
         es_correcta = opcion_seleccionada in correctas if correctas else False
+
+        # Verificar si es correcta
+        correctas = pregunta.get('respuestas_correctas', [])
+        es_correcta = opcion_seleccionada in correctas if correctas else False
+
+        # SI ES INCORRECTA, REINICIAR
+        if not es_correcta:
+            # Mostrar mensaje de error
+            await query.edit_message_text(
+                "❌ Respuesta incorrecta. Reiniciando el cuestionario desde 0...",
+                parse_mode='Markdown'
+            )
+            # Reiniciar sesión
+            db.actualizar_sesion(sesion['id'], {
+                'pregunta_actual': 0,
+                'respuestas': [],
+                'intento_numero': sesion.get('intento_numero', 1) + 1
+            })
+            # Mostrar primera pregunta
+            await mostrar_pregunta(
+                update,
+                context,
+                sesion,
+                preguntas[0],
+                0,
+                len(preguntas)
+            )
+            return
         
         # Calcular tiempo tardado
         tiempo_tardado = 0
@@ -555,6 +583,27 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
             pregunta,
             admin_config
         )
+
+    # SI ES INCORRECTA, REINICIAR
+    if es_correcta is False:
+        await update.effective_message.reply_text(
+            "❌ Respuesta incorrecta. Reiniciando el cuestionario desde 0...",
+            parse_mode='Markdown'
+        )
+        db.actualizar_sesion(sesion['id'], {
+            'pregunta_actual': 0,
+            'respuestas': [],
+            'intento_numero': sesion.get('intento_numero', 1) + 1
+        })
+        await mostrar_pregunta(
+            update,
+            context,
+            sesion,
+            preguntas[0],
+            0,
+            len(preguntas)
+        )
+        return
     
     # Guardar respuesta
     tiempo_tardado = 0

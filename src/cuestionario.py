@@ -552,18 +552,7 @@ async def completar_cuestionario(update: Update, context: ContextTypes.DEFAULT_T
                 except Exception as e:
                     log_error(f"Error notificando admin: {str(e)}")
         
-        # Verificar si mostrar correctas
-        if admin_config.get('mostrar_correctas', True):
-            keyboard = [
-                [InlineKeyboardButton("📋 Ver respuestas correctas", callback_data="ver_correctas")]
-            ]
-            await update.effective_message.reply_text(
-                mensaje,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-        else:
-            await update.effective_message.reply_text(mensaje, parse_mode='Markdown')
+        await update.effective_message.reply_text(mensaje, parse_mode='Markdown')
         
         # Limpiar datos del usuario
         context.user_data.clear()
