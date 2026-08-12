@@ -276,6 +276,8 @@ async def manejar_respuesta_eliminar(update: Update, context: ContextTypes.DEFAU
 
 async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los mensajes de texto del menú principal - SOLO si NO hay conversación activa"""
+    text = update.message.text
+    log_info(f"📩 Mensaje recibido en manejar_menu: {text}") 
     
     if context.user_data.get('conversation_state'):
         return
