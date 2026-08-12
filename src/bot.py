@@ -96,7 +96,7 @@ async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
         [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
         [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
         [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
-        [config.BOTON_ADMIN['modo_usuario']]  # <--- AGREGADO
+        [config.BOTON_ADMIN['modo_usuario']]
     ]
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -166,9 +166,8 @@ async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TY
         [config.BOTON_USUARIO['mi_historial']]
     ]
     
-    # Si es admin, agregar botón para volver (usando el mismo texto que "Modo usuario")
     if es_admin(update):
-        keyboard.append([config.BOTON_ADMIN['modo_admin']]) 
+        keyboard.append([config.BOTON_ADMIN['modo_admin']])
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -184,6 +183,7 @@ async def mostrar_panel_usuario(update: Update, context: ContextTypes.DEFAULT_TY
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
+
 
 # ============================================================
 # MANEJADOR DE ADMIN /admin_registro
@@ -254,20 +254,16 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los mensajes de texto del menú principal - SOLO si NO hay conversación activa"""
     
-    # VERIFICAR SI HAY UNA CONVERSACIÓN ACTIVA
     if context.user_data.get('conversation_state'):
-        return  # Ignorar el mensaje, la conversación lo manejará
+        return
     
     text = update.message.text
     user_id = update.effective_user.id
     
-    # Verificar si el admin está en "modo usuario"
     es_admin_real = es_admin(update)
     modo_usuario_activo = context.user_data.get('modo_usuario', False)
     
-    # Si es admin pero está en modo usuario, comportarse como usuario
     if es_admin_real and modo_usuario_activo:
-        # Comportamiento de usuario
         from src.user_handlers import user_handlers
         
         if text == config.BOTON_USUARIO['responder']:
@@ -275,15 +271,12 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text == config.BOTON_USUARIO['mi_historial']:
             await user_handlers.mostrar_mi_historial(update, context)
         elif text == config.BOTON_ADMIN['modo_admin']:
-            # Si presiona "👑 Modo admin", volver al panel de admin
             context.user_data['modo_usuario'] = False
             await mostrar_panel_admin(update, context)
         else:
-            # Si el admin en modo usuario escribe algo que no es un botón, ignorar
             pass
         return
     
-    # Si es admin y NO está en modo usuario
     if es_admin_real:
         if text == config.BOTON_ADMIN['crear']:
             await iniciar_crear(update, context)
@@ -298,20 +291,17 @@ async def manejar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text == config.BOTON_ADMIN['gestionar']:
             await mostrar_gestion(update, context)
         elif text == config.BOTON_ADMIN['modo_usuario']:
-            # Cambiar a modo usuario
             context.user_data['modo_usuario'] = True
             await mostrar_panel_usuario(update, context)
-        # NOTA: NO se muestra ningún mensaje de error para mensajes no reconocidos
         return
     
-    # Si NO es admin (usuario normal)
     from src.user_handlers import user_handlers
     
     if text == config.BOTON_USUARIO['responder']:
         await user_handlers.iniciar_responder(update, context)
     elif text == config.BOTON_USUARIO['mi_historial']:
         await user_handlers.mostrar_mi_historial(update, context)
-    # NOTA: NO se muestra ningún mensaje de error para mensajes no reconocidos
+
 
 # ============================================================
 # CONFIGURACIÓN DE LA APLICACIÓN
@@ -322,81 +312,55 @@ def configurar_bot() -> Application:
     
     application = Application.builder().token(config.TELEGRAM_TOKEN).build()
     
-    # ============================================================
-    # COMANDOS
-    # ============================================================
-    
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin_registro", admin_command))
     application.add_handler(CommandHandler("cancelar", cancelar))
     
-    # ============================================================
-    # HANDLER DE MENÚ - PRIORIDAD BAJA (group=2)
-    # ============================================================
-
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
             manejar_menu
         ),
-        group=2  # Prioridad BAJA - se ejecuta DESPUÉS de los ConversationHandlers
+        group=2
     )
-    
-    # ============================================================
-    # HANDLERS DE ADMIN (ConversationHandlers) - PRIORIDAD BAJA
-    # ============================================================
     
     from src.admin_handlers import admin_handlers
     admin_handlers.registrar_handlers(application, group=1)
     
-    # ============================================================
-    # HANDLERS DE USUARIO (ConversationHandlers) - PRIORIDAD BAJA
-    # ============================================================
-    
     from src.user_handlers import user_handlers
     user_handlers.registrar_handlers(application, group=1)
     
-    # ============================================================
-    # HANDLER DE CALLBACK QUERY (botones inline)
-    # ============================================================
-    
     async def manejar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Maneja todas las respuestas de botones inline"""
         query = update.callback_query
         await query.answer()
-        
         data = query.data
         
-        # Callbacks de admin (historial)
         if data.startswith('admin_hist_'):
             from src.admin_handlers import manejar_callback_historial
             await manejar_callback_historial(update, context)
             return
         
-        # Callbacks de configuración
         if data.startswith('config_'):
             from src.admin_handlers import manejar_callback_config
             await manejar_callback_config(update, context)
             return
         
-        # Callbacks de usuario
         if data.startswith('user_'):
             from src.user_handlers import user_handlers
             await user_handlers.manejar_callback_usuario(update, context)
             return
         
-        # Respuestas a preguntas
         if data.startswith('resp_'):
             from src.user_handlers import user_handlers
             await user_handlers.manejar_respuesta(update, context)
             return
         
-        # Lanzar cuestionario (ya manejado en admin_handlers)
         if data.startswith('lanzar_'):
             return
         
         if data == 'cancelar':
-            await cancelar(update, context)
+            from src.user_handlers import cancelar_respuesta
+            await cancelar_respuesta(update, context)
             return
         
         if data == 'ver_correctas':
@@ -406,35 +370,57 @@ def configurar_bot() -> Application:
                 await mostrar_respuestas_correctas(update, context, sesion['id'])
             return
         
-        # Si nada coincide, ignorar silenciosamente
         return
     
     application.add_handler(CallbackQueryHandler(manejar_callback))
     
     # ============================================================
-    # HANDLER DE ERRORES
+    # MANEJADOR DE ERRORES MEJORADO - IGNORA ERRORES NORMALES
     # ============================================================
     
     async def manejar_error(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Maneja errores del bot - SOLO para errores críticos"""
+        """Maneja errores del bot - Ignora errores comunes y solo muestra mensajes críticos"""
         error = context.error
+        error_str = str(error)
         
-        # Ignorar errores de "Conflict" que son normales en polling
-        if "Conflict" in str(error):
-            log_info(f"ℹ️ Conflicto de polling normal: {str(error)}")
+        # Lista de errores que se deben IGNORAR (no mostrar mensaje al usuario)
+        errores_ignorar = [
+            "Conflict",
+            "Timed out",
+            "Network",
+            "Message not modified",
+            "Can't parse entities",
+            "Message is not modified",
+            "CallbackQuery",
+            "Query is too old",
+            "Message to edit not found",
+            "Can't edit message",
+            "Not enough rights",
+            "Chat not found",
+            "User not found",
+            "Bad Request: message is not modified",
+            "Bad Request: can't parse entities",
+            "message to edit",
+            "not modified"
+        ]
+        
+        # Verificar si el error está en la lista de ignorados
+        for patron in errores_ignorar:
+            if patron.lower() in error_str.lower():
+                log_info(f"ℹ️ Error ignorado (normal): {error_str[:150]}")
+                return
+        
+        # Si es un error de "Bad Request" con "message is not modified"
+        if "bad request" in error_str.lower() and "not modified" in error_str.lower():
+            log_info(f"ℹ️ Error de mensaje no modificado (normal): {error_str[:150]}")
             return
         
-        # Ignorar errores de "Timed out"
-        if "Timed out" in str(error):
-            log_info(f"ℹ️ Timeout normal: {str(error)}")
+        # Si es un error relacionado con callbacks expirados
+        if "callback" in error_str.lower() and ("query" in error_str.lower() or "expired" in error_str.lower()):
+            log_info(f"ℹ️ Callback expirado (normal): {error_str[:150]}")
             return
         
-        # Ignorar errores de "Network"
-        if "Network" in str(error):
-            log_info(f"ℹ️ Error de red normal: {str(error)}")
-            return
-        
-        # Loggear el error real
+        # Para cualquier otro error, loggear y mostrar mensaje al usuario
         log_error(f"❌ Error crítico en el bot: {str(error)}")
         import traceback
         log_error(f"❌ Traceback: {traceback.format_exc()}")

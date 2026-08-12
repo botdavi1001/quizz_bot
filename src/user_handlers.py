@@ -635,14 +635,14 @@ async def cancelar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     context.user_data.clear()
     
-    await update.message.reply_text(
+    # CAMBIADO: update.message -> update.effective_message
+    await update.effective_message.reply_text(
         "✅ Respuesta cancelada. Volviendo al menú...",
         parse_mode='Markdown'
     )
     
     await enviar_panel_usuario(update, context)
     return ConversationHandler.END
-
 
 # ============================================================
 # EXPORTAR FUNCIONES
@@ -657,4 +657,4 @@ user_handlers.recibir_respuesta_abierta = recibir_respuesta_abierta
 
 # ============================================================
 # FIN DE user_handlers.py
-# ============================================================
+# ===========================================================
