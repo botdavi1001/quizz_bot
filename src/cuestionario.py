@@ -145,6 +145,47 @@ def seleccionar_preguntas(preguntas: List[Dict], cantidad: int, tipo: str,
 
 
 # ============================================================
+# FUNCIÓN PARA CREAR BARRA DE PROGRESO
+# ============================================================
+
+def crear_barra_progreso(tiempo_restante: int, tiempo_total: int) -> str:
+    """
+    Crea una barra de progreso visual para el cronómetro.
+    
+    Args:
+        tiempo_restante: Segundos que quedan
+        tiempo_total: Segundos totales de la pregunta
+    
+    Returns:
+        Barra de progreso como texto
+    """
+    if tiempo_total <= 0:
+        return "⏱️ ⏳ Sin límite de tiempo"
+    
+    # Calcular porcentaje
+    porcentaje = (tiempo_restante / tiempo_total) * 100
+    
+    # Definir tamaño de la barra (10 caracteres)
+    barra_len = 10
+    lleno = int((porcentaje / 100) * barra_len)
+    vacio = barra_len - lleno
+    
+    # Asegurar que lleno no sea negativo ni mayor que barra_len
+    lleno = max(0, min(lleno, barra_len))
+    vacio = barra_len - lleno
+    
+    # Elegir color según el tiempo restante
+    if porcentaje > 60:
+        barra = "🟩" * lleno + "⬜" * vacio
+    elif porcentaje > 30:
+        barra = "🟨" * lleno + "⬜" * vacio
+    else:
+        barra = "🟥" * lleno + "⬜" * vacio
+    
+    return f"⏱️ [{barra}] {tiempo_restante}s / {tiempo_total}s"
+
+
+# ============================================================
 # MOSTRAR PREGUNTA
 # ============================================================
 
@@ -169,11 +210,15 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
         mensaje += f"{texto_pregunta}\n\n"
         
         if tiempo > 0:
-            mensaje += f"⏱️ Tiempo: {tiempo} segundos\n"
+            # Mostrar barra de progreso inicial
+            barra = crear_barra_progreso(tiempo, tiempo)
+            mensaje += f"{barra}\n\n"
         else:
-            mensaje += f"⏱️ Sin límite de tiempo\n"
+            mensaje += f"⏱️ Sin límite de tiempo\n\n"
         
         # Construir botones según tipo
+        keyboard = None
+        
         if tipo == 'multiple':
             opciones = pregunta.get('opciones', [])
             if not opciones:
@@ -183,42 +228,33 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
             keyboard = []
             for i, opcion in enumerate(opciones):
                 keyboard.append([InlineKeyboardButton(opcion, callback_data=f"resp_{i}")])
-            
-            # Botón para cancelar
             keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")])
-            
-            await update.effective_message.reply_text(
-                mensaje,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            keyboard = InlineKeyboardMarkup(keyboard)
         
         elif tipo == 'vf':
-            keyboard = [
+            keyboard = InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton("✅ Verdadero", callback_data="resp_v"),
                     InlineKeyboardButton("❌ Falso", callback_data="resp_f")
                 ],
                 [InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")]
-            ]
-            
-            await update.effective_message.reply_text(
-                mensaje,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            ])
         
         elif tipo == 'abierta':
-            keyboard = [
+            keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("📝 Escribir respuesta", callback_data="resp_abierta")],
                 [InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")]
-            ]
-            
-            await update.effective_message.reply_text(
-                mensaje + "\n✏️ Escribe tu respuesta en el siguiente mensaje.",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            ])
+        
+        # Guardar los botones en context.user_data para reusarlos
+        context.user_data['keyboard'] = keyboard
+        context.user_data['mensaje_base'] = mensaje
+        
+        message = await update.effective_message.reply_text(
+            mensaje,
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
         
         # Guardar estado del tiempo en context
         if tiempo > 0:
@@ -226,32 +262,89 @@ async def mostrar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE,
             context.user_data['tiempo_inicio'] = datetime.now()
             context.user_data['pregunta_actual'] = pregunta_idx
             context.user_data['sesion_id'] = sesion.get('id')
+            context.user_data['mensaje_id'] = message.message_id
+            context.user_data['chat_id'] = update.effective_chat.id
+            context.user_data['tiempo_total'] = tiempo
             
-            # Iniciar temporizador
-            asyncio.create_task(manejar_tiempo(update, context, sesion['id'], tiempo, pregunta_idx))
+            # Iniciar temporizador con barra de progreso
+            asyncio.create_task(manejar_tiempo_con_barra(
+                update, context, sesion['id'], tiempo, pregunta_idx, message.message_id
+            ))
     
     except Exception as e:
         log_error(f"Error mostrando pregunta: {str(e)}")
         await update.effective_message.reply_text("❌ Error al mostrar la pregunta. Intenta de nuevo.")
 
 
-async def manejar_tiempo(update: Update, context: ContextTypes.DEFAULT_TYPE, 
-                         sesion_id: str, tiempo: int, pregunta_idx: int):
+async def manejar_tiempo_con_barra(update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                    sesion_id: str, tiempo_total: int, pregunta_idx: int,
+                                    mensaje_id: int):
     """
-    Maneja el temporizador de una pregunta.
+    Maneja el temporizador de una pregunta con barra de progreso.
+    Actualiza el mensaje cada segundo manteniendo los botones.
     """
-    await asyncio.sleep(tiempo)
+    chat_id = context.user_data.get('chat_id')
+    if not chat_id:
+        return
     
-    # Verificar que la sesión siga activa
+    # Obtener los botones guardados
+    keyboard = context.user_data.get('keyboard')
+    mensaje_base = context.user_data.get('mensaje_base', '')
+    
+    for segundos_restantes in range(tiempo_total, 0, -1):
+        # Verificar que la sesión siga activa
+        sesion = db.obtener_sesion(sesion_id)
+        if not sesion:
+            return
+        
+        # Verificar que no haya sido completada o abandonada
+        if sesion.get('completado') or sesion.get('abandonado'):
+            return
+        
+        # Verificar que aún esté en la misma pregunta
+        if sesion.get('pregunta_actual') != pregunta_idx:
+            return
+        
+        # Actualizar la barra de progreso
+        try:
+            barra = crear_barra_progreso(segundos_restantes, tiempo_total)
+            
+            # Reconstruir el mensaje completo con la nueva barra
+            # Reemplazar la línea de la barra en el mensaje base
+            lineas = mensaje_base.split('\n')
+            nuevas_lineas = []
+            for linea in lineas:
+                if '⏱️' in linea and '[' in linea and ']' in linea:
+                    nuevas_lineas.append(barra)
+                else:
+                    nuevas_lineas.append(linea)
+            
+            nuevo_texto = '\n'.join(nuevas_lineas)
+            
+            # Editar el mensaje manteniendo los botones
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=mensaje_id,
+                text=nuevo_texto,
+                parse_mode='Markdown',
+                reply_markup=keyboard
+            )
+                
+        except Exception as e:
+            # Si falla la edición, no pasa nada, seguimos
+            pass
+        
+        # Esperar 1 segundo
+        await asyncio.sleep(1)
+    
+    # Cuando el tiempo se acaba, verificar si la sesión sigue activa
     sesion = db.obtener_sesion(sesion_id)
     if not sesion:
         return
     
-    # Verificar que no haya sido completada o abandonada
     if sesion.get('completado') or sesion.get('abandonado'):
         return
     
-    # Verificar que aún esté en la misma pregunta
     if sesion.get('pregunta_actual') != pregunta_idx:
         return
     
@@ -260,8 +353,9 @@ async def manejar_tiempo(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     # Notificar al usuario
     try:
-        await update.effective_message.reply_text(
-            config.MENSAJE_TIEMPO_AGOTADO,
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=config.MENSAJE_TIEMPO_AGOTADO,
             parse_mode='Markdown'
         )
         
@@ -273,7 +367,7 @@ async def manejar_tiempo(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 pregunta['id'],
                 'TIEMPO_AGOTADO',
                 False,
-                tiempo
+                tiempo_total
             )
         
         # Reiniciar desde 0

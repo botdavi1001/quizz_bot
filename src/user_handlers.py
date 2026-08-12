@@ -500,24 +500,24 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
     texto = update.message.text.strip()
     
     if texto.lower() == 'cancelar':
-        await update.message.reply_text("✅ Respuesta cancelada.")
+        await update.effective_message.reply_text("✅ Respuesta cancelada.")
         return ConversationHandler.END
     
     # Obtener sesión activa
     sesion = db.obtener_sesion_activa(user_id)
     if not sesion:
-        await update.message.reply_text("❌ No tienes una sesión activa.")
+        await update.effective_message.reply_text("❌ No tienes una sesión activa.")
         return ConversationHandler.END
     
     # Obtener cuestionario
     cuestionario = db.obtener_cuestionario(sesion.get('cuestionario_id'))
     if not cuestionario:
-        await update.message.reply_text("❌ Cuestionario no encontrado.")
+        await update.effective_message.reply_text("❌ Cuestionario no encontrado.")
         return ConversationHandler.END
     
     # Verificar si el cuestionario sigue activo
     if not cuestionario.get('activo', False):
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             config.MENSAJE_CUESTIONARIO_INACTIVO,
             parse_mode='Markdown'
         )
@@ -527,7 +527,7 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
     # Obtener preguntas
     preguntas = obtener_preguntas_cuestionario(cuestionario['id'], cuestionario['admin_id'])
     if not preguntas:
-        await update.message.reply_text("❌ No se encontraron preguntas.")
+        await update.effective_message.reply_text("❌ No se encontraron preguntas.")
         return ConversationHandler.END
     
     # Obtener pregunta actual
@@ -590,12 +590,12 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
     else:
         feedback = "❌ Incorrecto."
     
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"{feedback}\n\n⏳ Siguiente pregunta...",
         parse_mode='Markdown'
     )
     
-        # Pasar a la siguiente pregunta
+    # Pasar a la siguiente pregunta
     await asyncio.sleep(1)
     
     siguiente_idx = pregunta_idx + 1
@@ -606,7 +606,7 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
         # OBTENER LA SESIÓN ACTUALIZADA
         sesion_actualizada = db.obtener_sesion(sesion['id'])
         if not sesion_actualizada:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "❌ Error al obtener la sesión actualizada.",
                 parse_mode='Markdown'
             )
@@ -622,7 +622,6 @@ async def recibir_respuesta_abierta(update: Update, context: ContextTypes.DEFAUL
         )
     
     return ConversationHandler.END
-
 
 async def cancelar_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela la respuesta abierta y vuelve al menú"""
