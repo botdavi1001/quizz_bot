@@ -32,7 +32,10 @@ from src.admin_handlers import (
     mostrar_config,
     iniciar_lanzar,
     mostrar_gestion,
-    manejar_callback_historial
+    manejar_callback_historial,
+    admin_estado,
+    recibir_eliminar_pregunta,
+    confirmar_eliminar_pregunta
 )
 
 # ============================================================
@@ -248,6 +251,26 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
+# MANEJADOR DE RESPUESTAS DE ELIMINAR PREGUNTA
+# ============================================================
+
+async def manejar_respuesta_eliminar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja las respuestas del proceso de eliminar preguntas"""
+    user_id = update.effective_user.id
+    estado = admin_estado.get(user_id, {})
+    
+    # Si no está en modo eliminar, ignorar
+    if not estado.get('esperando_eliminar'):
+        return
+    
+    # Si está esperando confirmación
+    if estado.get('esperando_confirmacion'):
+        await confirmar_eliminar_pregunta(update, context)
+    else:
+        await recibir_eliminar_pregunta(update, context)
+
+
+# ============================================================
 # HANDLER DEL MENÚ PRINCIPAL
 # ============================================================
 
@@ -316,6 +339,22 @@ def configurar_bot() -> Application:
     application.add_handler(CommandHandler("admin_registro", admin_command))
     application.add_handler(CommandHandler("cancelar", cancelar))
     
+    # ============================================================
+    # HANDLER PARA ELIMINAR PREGUNTA (prioridad alta)
+    # ============================================================
+    
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            manejar_respuesta_eliminar
+        ),
+        group=1  # Prioridad alta
+    )
+    
+    # ============================================================
+    # HANDLER DE MENÚ (prioridad baja)
+    # ============================================================
+
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -324,11 +363,23 @@ def configurar_bot() -> Application:
         group=2
     )
     
+    # ============================================================
+    # HANDLERS DE ADMIN (ConversationHandlers) - PRIORIDAD BAJA
+    # ============================================================
+    
     from src.admin_handlers import admin_handlers
-    admin_handlers.registrar_handlers(application, group=1)
+    admin_handlers.registrar_handlers(application, group=2)
+    
+    # ============================================================
+    # HANDLERS DE USUARIO (ConversationHandlers) - PRIORIDAD BAJA
+    # ============================================================
     
     from src.user_handlers import user_handlers
-    user_handlers.registrar_handlers(application, group=1)
+    user_handlers.registrar_handlers(application, group=2)
+    
+    # ============================================================
+    # HANDLER DE CALLBACK QUERY (botones inline)
+    # ============================================================
     
     async def manejar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
@@ -383,44 +434,29 @@ def configurar_bot() -> Application:
         error = context.error
         error_str = str(error)
         
-        # Lista de errores que se deben IGNORAR (no mostrar mensaje al usuario)
+        # Lista de errores que se deben IGNORAR
         errores_ignorar = [
-            "Conflict",
-            "Timed out",
-            "Network",
-            "Message not modified",
-            "Can't parse entities",
-            "Message is not modified",
-            "CallbackQuery",
-            "Query is too old",
-            "Message to edit not found",
-            "Can't edit message",
-            "Not enough rights",
-            "Chat not found",
-            "User not found",
-            "Bad Request: message is not modified",
-            "Bad Request: can't parse entities",
-            "message to edit",
-            "not modified"
+            "Conflict", "Timed out", "Network", "Message not modified",
+            "Can't parse entities", "Message is not modified", "CallbackQuery",
+            "Query is too old", "Message to edit not found", "Can't edit message",
+            "Not enough rights", "Chat not found", "User not found",
+            "Bad Request: message is not modified", "Bad Request: can't parse entities",
+            "message to edit", "not modified"
         ]
         
-        # Verificar si el error está en la lista de ignorados
         for patron in errores_ignorar:
             if patron.lower() in error_str.lower():
                 log_info(f"ℹ️ Error ignorado (normal): {error_str[:150]}")
                 return
         
-        # Si es un error de "Bad Request" con "message is not modified"
         if "bad request" in error_str.lower() and "not modified" in error_str.lower():
             log_info(f"ℹ️ Error de mensaje no modificado (normal): {error_str[:150]}")
             return
         
-        # Si es un error relacionado con callbacks expirados
         if "callback" in error_str.lower() and ("query" in error_str.lower() or "expired" in error_str.lower()):
             log_info(f"ℹ️ Callback expirado (normal): {error_str[:150]}")
             return
         
-        # Para cualquier otro error, loggear y mostrar mensaje al usuario
         log_error(f"❌ Error crítico en el bot: {str(error)}")
         import traceback
         log_error(f"❌ Traceback: {traceback.format_exc()}")

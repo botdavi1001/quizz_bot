@@ -45,7 +45,7 @@ async def enviar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [config.BOTON_ADMIN['crear'], config.BOTON_ADMIN['csv']],
         [config.BOTON_ADMIN['historial'], config.BOTON_ADMIN['configurar']],
         [config.BOTON_ADMIN['lanzar'], config.BOTON_ADMIN['gestionar']],
-        [config.BOTON_ADMIN['modo_usuario']]  # <--- AGREGADO
+        [config.BOTON_ADMIN['modo_usuario']]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -1372,8 +1372,7 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not preguntas:
         await update.message.reply_text(
-            "📭 No hay preguntas para eliminar.\n\n"
-            "Primero crea algunas preguntas.",
+            "📭 No hay preguntas para eliminar.\n\nPrimero crea algunas preguntas.",
             parse_mode='Markdown'
         )
         return
@@ -1381,7 +1380,8 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Guardar preguntas en estado
     admin_estado[user_id] = {
         'preguntas': preguntas,
-        'modo': 'eliminar'
+        'modo': 'eliminar',
+        'esperando_eliminar': True  # <--- INDICADOR DE QUE ESTÁ ESPERANDO RESPUESTA
     }
     
     # Generar CSV con números
@@ -1450,40 +1450,42 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje += "Escribe 'cancelar' para salir."
     
     await update.message.reply_text(mensaje, parse_mode='Markdown')
-    return ESPERANDO_ELIMINAR_PREGUNTA
 
 
 async def recibir_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Recibe los números de las preguntas a eliminar"""
-    texto = update.message.text.strip()
     user_id = update.effective_user.id
     estado = admin_estado.get(user_id, {})
+    
+    # Verificar si está esperando eliminar
+    if not estado.get('esperando_eliminar'):
+        return
+    
+    texto = update.message.text.strip()
     
     if texto.lower() == 'cancelar':
         admin_estado.pop(user_id, None)
         await update.message.reply_text("✅ Eliminación cancelada.", parse_mode='Markdown')
         await enviar_panel_admin(update, context)
-        return ConversationHandler.END
+        return
     
     preguntas = estado.get('preguntas', [])
     if not preguntas:
         await update.message.reply_text("❌ No hay preguntas disponibles.", parse_mode='Markdown')
+        admin_estado.pop(user_id, None)
         await enviar_panel_admin(update, context)
-        return ConversationHandler.END
+        return
     
     # Parsear la selección
     indices_a_eliminar = set()
     
     if texto.lower() == 'todos':
-        # Eliminar TODAS las preguntas
         indices_a_eliminar = set(range(len(preguntas)))
     else:
-        # Parsear números y rangos
         partes = texto.split(',')
         for parte in partes:
             parte = parte.strip()
             if '-' in parte:
-                # Rango: 5-10
                 inicio, fin = parte.split('-')
                 try:
                     inicio = int(inicio) - 1
@@ -1494,7 +1496,6 @@ async def recibir_eliminar_pregunta(update: Update, context: ContextTypes.DEFAUL
                 except:
                     pass
             else:
-                # Número individual
                 try:
                     num = int(parte) - 1
                     if 0 <= num < len(preguntas):
@@ -1504,16 +1505,15 @@ async def recibir_eliminar_pregunta(update: Update, context: ContextTypes.DEFAUL
     
     if not indices_a_eliminar:
         await update.message.reply_text(
-            f"❌ No seleccionaste ninguna pregunta válida.\n\n"
-            f"Usa el formato correcto: `1,3,5-10,15` o `todos`\n"
-            f"Los números deben estar entre 1 y {len(preguntas)}.",
+            f"❌ No seleccionaste ninguna pregunta válida.\n\nUsa el formato correcto: `1,3,5-10,15` o `todos`\nLos números deben estar entre 1 y {len(preguntas)}.",
             parse_mode='Markdown'
         )
-        return ESPERANDO_ELIMINAR_PREGUNTA
+        return
     
     # Guardar lista de IDs a eliminar
     preguntas_a_eliminar = [preguntas[i] for i in sorted(indices_a_eliminar)]
     admin_estado[user_id]['eliminar_lista'] = [p['id'] for p in preguntas_a_eliminar]
+    admin_estado[user_id]['esperando_confirmacion'] = True
     
     # Mostrar confirmación
     mensaje = f"⚠️ **¿Eliminar {len(preguntas_a_eliminar)} preguntas?**\n\n"
@@ -1527,22 +1527,24 @@ async def recibir_eliminar_pregunta(update: Update, context: ContextTypes.DEFAUL
     mensaje += "Escribe **SI** (en mayúsculas) para confirmar, o 'cancelar' para salir."
     
     await update.message.reply_text(mensaje, parse_mode='Markdown')
-    
-    # Cambiar al estado de confirmación
-    return CONFIRMAR_ELIMINACION
 
 
 async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Confirma la eliminación de las preguntas seleccionadas"""
-    texto = update.message.text.strip()
     user_id = update.effective_user.id
     estado = admin_estado.get(user_id, {})
+    
+    # Verificar si está esperando confirmación
+    if not estado.get('esperando_confirmacion'):
+        return
+    
+    texto = update.message.text.strip()
     
     if texto.lower() == 'cancelar':
         admin_estado.pop(user_id, None)
         await update.message.reply_text("✅ Eliminación cancelada.", parse_mode='Markdown')
         await enviar_panel_admin(update, context)
-        return ConversationHandler.END
+        return
     
     if texto.upper() == 'SI':
         # Eliminar preguntas
@@ -1559,13 +1561,11 @@ async def confirmar_eliminar_pregunta(update: Update, context: ContextTypes.DEFA
             parse_mode='Markdown'
         )
         await enviar_panel_admin(update, context)
-        return ConversationHandler.END
     else:
         await update.message.reply_text(
             "❌ Escribe **SI** para confirmar o 'cancelar' para salir.",
             parse_mode='Markdown'
         )
-        return CONFIRMAR_ELIMINACION
 
 
 # ============================================================
@@ -1645,32 +1645,7 @@ def registrar_handlers(application, group=1):
     application.add_handler(lanzar_conv, group=group)
 
     # ============================================================
-    # CONVERSACIÓN: ELIMINAR PREGUNTAS
-    # ============================================================
-
-    gestion_conv = ConversationHandler(
-        entry_points=[
-            MessageHandler(filters.Regex(f'^{config.BOTON_ADMIN["gestionar"]}$'), mostrar_gestion)
-        ],
-        states={
-            ESPERANDO_ELIMINAR_PREGUNTA: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_eliminar_pregunta),
-            ],
-            CONFIRMAR_ELIMINACION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, confirmar_eliminar_pregunta),
-            ],
-        },
-        fallbacks=[
-            CommandHandler("cancelar", cancelar_conversacion)
-        ],
-        allow_reentry=True,
-        per_message=False,
-    )
-
-    application.add_handler(gestion_conv, group=group)
-    
-    # ============================================================
-    # HANDLERS SIMPLES (sin conversación)
+    # HANDLERS SIMPLES (sin conversación) - ELIMINAR PREGUNTAS se maneja en bot.py
     # ============================================================
     
     # Subir CSV (entrada al ConversationHandler)
