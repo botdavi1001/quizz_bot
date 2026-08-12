@@ -1360,6 +1360,11 @@ async def confirmar_lanzar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra el panel para eliminar preguntas con instrucciones y envía CSV"""
+    import asyncio
+    import csv
+    import io
+    from datetime import datetime
+    
     user_id = update.effective_user.id
     admin = db.obtener_admin(user_id)
     
@@ -1367,7 +1372,6 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No eres admin.", parse_mode='Markdown')
         return
     
-    # Obtener preguntas
     preguntas = db.obtener_preguntas(admin['id'])
     
     if not preguntas:
@@ -1377,31 +1381,18 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Guardar preguntas en estado
     admin_estado[user_id] = {
         'preguntas': preguntas,
         'modo': 'eliminar',
-        'esperando_eliminar': True  # <--- INDICADOR DE QUE ESTÁ ESPERANDO RESPUESTA
+        'esperando_eliminar': True
     }
     
-    # Generar CSV con números
-    import csv
-    import io
-    
+    # Generar CSV
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Encabezados
     writer.writerow([
-        'numero',
-        'pregunta',
-        'tipo',
-        'opciones',
-        'correctas',
-        'tiempo',
-        'imagen_url',
-        'video_url',
-        'enlace'
+        'numero', 'pregunta', 'tipo', 'opciones', 'correctas', 'tiempo'
     ])
     
     for i, p in enumerate(preguntas, 1):
@@ -1414,42 +1405,34 @@ async def mostrar_gestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p.get('tipo', 'multiple'),
             opciones,
             correctas,
-            p.get('tiempo_segundos', 30),
-            p.get('imagen_url', ''),
-            p.get('video_url', ''),
-            p.get('enlace_url', '')
+            p.get('tiempo_segundos', 30)
         ])
     
     csv_content = output.getvalue().encode('utf-8')
     
-    # Enviar CSV con las instrucciones
+    # PRIMERO: Enviar el mensaje de instrucciones
+    mensaje = (
+        f"🗑️ **Eliminar preguntas**\n\n"
+        f"📝 Total de preguntas: {len(preguntas)}\n\n"
+        "**Escribe los números de las preguntas a eliminar:**\n"
+        "• `1,3,5,7` → elimina las preguntas 1, 3, 5 y 7\n"
+        "• `10-20` → elimina las preguntas 10 a 20\n"
+        "• `1,3,5-10,15` → combinación\n"
+        "• `todos` → elimina TODAS las preguntas\n\n"
+        "Escribe 'cancelar' para salir."
+    )
+    
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+    
+    # Pequeña pausa para que el mensaje se envíe antes del CSV
+    await asyncio.sleep(0.5)
+    
+    # LUEGO: Enviar el CSV
     await update.message.reply_document(
         document=io.BytesIO(csv_content),
         filename=f"preguntas_para_eliminar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        caption="📥 **Lista de preguntas con números**\n\n"
-                "Usa este archivo para saber qué número tiene cada pregunta.\n\n"
-                "**Para eliminar, escribe los números de las preguntas:**\n"
-                "• Números individuales: `1,3,5,7`\n"
-                "• Rangos: `10-20`\n"
-                "• Combinación: `1,3,5-10,15`\n"
-                "• Todas: `todos`\n\n"
-                "Ejemplo: `1,3,5-10,15`\n\n"
-                "Escribe 'cancelar' para salir.",
-        parse_mode='Markdown'
+        caption="📥 **CSV con los números de las preguntas**"
     )
-    
-    # Instrucciones en texto
-    mensaje = f"🗑️ **Eliminar preguntas**\n\n"
-    mensaje += f"📝 Total de preguntas: {len(preguntas)}\n\n"
-    mensaje += "Ya envié el CSV con todas las preguntas y sus números.\n\n"
-    mensaje += "**Escribe los números de las preguntas a eliminar:**\n"
-    mensaje += "• `1,3,5,7` → elimina las preguntas 1, 3, 5 y 7\n"
-    mensaje += "• `10-20` → elimina las preguntas 10 a 20\n"
-    mensaje += "• `1,3,5-10,15` → combinación\n"
-    mensaje += "• `todos` → elimina TODAS las preguntas\n\n"
-    mensaje += "Escribe 'cancelar' para salir."
-    
-    await update.message.reply_text(mensaje, parse_mode='Markdown')
 
 
 async def recibir_eliminar_pregunta(update: Update, context: ContextTypes.DEFAULT_TYPE):
