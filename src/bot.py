@@ -424,15 +424,6 @@ def configurar_bot() -> Application:
         log_error(f"❌ Error crítico en el bot: {str(error)}")
         import traceback
         log_error(f"❌ Traceback: {traceback.format_exc()}")
-        
-        try:
-            if update and update.effective_message:
-                await update.effective_message.reply_text(
-                    "❌ Ocurrió un error. Intenta de nuevo más tarde.",
-                    parse_mode='Markdown'
-                )
-        except:
-            pass
     
     application.add_error_handler(manejar_error)
     
