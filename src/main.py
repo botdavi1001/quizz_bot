@@ -24,6 +24,16 @@ app = Flask(__name__)
 def ping():
     return 'OK', 200
 
+@app.route('/ping-db', methods=['GET'])
+def ping_db():
+    """Endpoint para mantener vivo Supabase (usado por cron-job.org)"""
+    try:
+        result = db.client.table('admins').select('id', count='exact').limit(1).execute()
+        return 'OK', 200  # <--- Respuesta simple
+    except Exception as e:
+        log_error(f"❌ Error en ping-db: {str(e)}")
+        return 'ERROR', 500
+
 @app.route('/health', methods=['GET'])
 def health():
     try:
@@ -40,6 +50,21 @@ def iniciar_servidor():
 # FUNCIÓN PRINCIPAL
 # ============================================================
 
+async def mantener_supabase_vivo():
+    """Tarea programada para mantener Supabase activo (ejecución interna)"""
+    while True:
+        try:
+            # Realiza una consulta mínima y rápida a la base de datos
+            result = db.client.table('admins').select('id', count='exact').limit(1).execute()
+            log_info("✅ [Tarea Interna] Ping a Supabase exitoso. Proyecto activo.")
+        except Exception as e:
+            log_error(f"❌ [Tarea Interna] Error en ping a Supabase: {str(e)}")
+        
+        # Espera 1 día (86,400 segundos) antes de la próxima verificación.
+        # Es un intervalo seguro que evita pausas.
+        await asyncio.sleep(86400) 
+    
+
 async def main():
     log_info("=" * 50)
     log_info("📱 BOT DE TELEGRAM - CUESTIONARIOS")
@@ -52,6 +77,8 @@ async def main():
         log_info("✅ Conexión a Supabase verificada")
     except Exception as e:
         log_error(f"⚠️ Error conectando a Supabase: {str(e)}")
+
+    asyncio.create_task(mantener_supabase_vivo())
     
     # Sincronizar respaldos
     try:
